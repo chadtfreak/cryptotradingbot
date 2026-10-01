@@ -13,6 +13,7 @@ A crypto trading bot with its own USDT wallet that has to earn its keep. It pays
 | Bankroll | $100 USDT |
 | Control | Fully autonomous, with a kill switch on the dashboard |
 | Survival rule | Running costs are paid from the bot's balance before anything counts as profit. Below $50 it dies. |
+| Hosting | Your Umbrel at home. The bot charges itself $1 a month as its share of the power bill. |
 
 ## The honest maths
 
@@ -24,11 +25,9 @@ The first backtest on the last 111 days of ETH/USDT (4h candles) showed this cle
 - hosting costs took about **22%** of the starting balance
 - net result **-3.5%**, while simply holding ETH made +61% over the same period
 
-So the strategy isn't the main problem at this size. The rent is. Ways to fix it:
+So the strategy wasn't the main problem at this size. The rent was.
 
-1. Run the bot somewhere free or close to free (a Raspberry Pi at home, a free cloud tier) so running costs are near zero.
-2. Start with a bigger bankroll so $6 a month is a smaller share.
-3. Accept a shorter life and treat the first $100 as the price of learning.
+**Decision:** run it on the Umbrel and drop running costs to $1 a month. The same backtest then finishes at **+16.7%** (costs $3.67 instead of $22), and if it made nothing at all it would take about 4 years to hit the floor.
 
 ## Stages
 

@@ -25,6 +25,6 @@ slippage_pct = 0.10
 gas_per_swap_usd = 0.05
 
 [survival]
-monthly_running_cost_usd = 6.0   # VPS hosting. The bot pays this out of its own balance.
+monthly_running_cost_usd = 1.0   # Umbrel power share. The bot pays this out of its own balance.
 floor_usd = 50.0                 # below this the bot is "dead": it sells up and stops for good
 daily_loss_limit_pct = 5.0       # lose this much in a UTC day and it sits out until tomorrow
