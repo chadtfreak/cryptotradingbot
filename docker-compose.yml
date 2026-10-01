@@ -1,0 +1,13 @@
+services:
+  survival-bot:
+    build: .
+    container_name: survival-bot
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      # Change this before you start it. The dashboard asks for it (any username works).
+      DASHBOARD_PASSWORD: "change-me"
+    volumes:
+      # Trade history and balances live here, so they survive restarts and updates.
+      - ./data:/app/data

@@ -4,19 +4,46 @@ A crypto trading bot that has to pay its own way. It trades ETH/USDT, pays its h
 
 Currently in **paper mode**: real live prices, pretend money. See [docs/SCOPE.md](docs/SCOPE.md) for the plan and the honest maths.
 
-## Get started
+## Run it on your Umbrel
 
-You need Python 3.11 or newer.
+See [docs/UMBREL.md](docs/UMBREL.md). This is the best place for it to live long term.
 
+## Run it on your computer
+
+Good for a quick look. The bot only runs while your computer is on and awake.
+
+**1. Install Python** (one time only). Download it from https://www.python.org/downloads/ and install it. On Windows, tick **"Add Python to PATH"** on the first screen of the installer.
+
+**2. Download the bot.** On https://github.com/chadtfreak/cryptotradingbot click the green **Code** button, then **Download ZIP**. Unzip it somewhere easy, like your Desktop.
+
+**3. Open a terminal in that folder.**
+- Mac: open the **Terminal** app, type `cd ` (with a space), drag the unzipped folder into the window, press Enter.
+- Windows: open the unzipped folder, click the address bar, type `powershell`, press Enter.
+
+**4. Set it up** (one time only). Paste these lines:
+
+Mac:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-python -m bot run
 ```
 
-Open http://127.0.0.1:8000 and you'll see the dashboard. The bot checks prices every minute and makes its trading decisions every time a 4 hour candle closes, so expect it to be quiet for a while. Every decision shows up in the "What I'm thinking" log.
+Windows:
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+**5. Start the bot:**
+
+Mac: `python -m bot run`
+
+Windows: `.venv\Scripts\python -m bot run`
+
+**6. Open http://127.0.0.1:8000** in your browser. That's the dashboard.
+
+To stop it, go back to the terminal and press **Ctrl+C**. To start it again later, open a terminal in the folder (step 3), then on Mac run `source .venv/bin/activate` followed by `python -m bot run`, or on Windows just run `.venv\Scripts\python -m bot run`.
 
 ## Commands
 
@@ -26,7 +53,7 @@ Open http://127.0.0.1:8000 and you'll see the dashboard. The bot checks prices e
 | `python -m bot backtest` | Replay the strategy over the last ~120 days of Kraken data |
 | `python -m bot backtest --interval 60` | Same, on 1 hour candles |
 | `python -m bot reset` | Delete all history and start a new life |
-| `pytest` | Run the tests |
+| `pip install -r requirements-dev.txt && pytest` | Run the tests |
 
 ## Settings
 

@@ -34,8 +34,11 @@ def main() -> None:
         from .store import Store
         from .web import create_app
 
-        if args.host != "127.0.0.1" and not os.environ.get("DASHBOARD_PASSWORD"):
+        password = os.environ.get("DASHBOARD_PASSWORD")
+        if args.host != "127.0.0.1" and not password:
             raise SystemExit("Refusing to listen on a public address without DASHBOARD_PASSWORD set.")
+        if password == "change-me":
+            raise SystemExit("Set your own DASHBOARD_PASSWORD (in docker-compose.yml) instead of change-me.")
         engine = Engine(settings, KrakenMarket(settings.bot.pair), Store(settings.bot.db_path))
         print(f"Dashboard: http://{args.host}:{args.port}")
         uvicorn.run(create_app(engine), host=args.host, port=args.port, log_level="warning")
