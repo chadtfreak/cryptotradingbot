@@ -1,0 +1,30 @@
+manifestVersion: 1
+id: chad-survival-bot
+name: Survival Bot
+tagline: A crypto trading bot that has to pay its own way
+icon: https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/bot/static/icon.svg
+category: finance
+version: "1.0.0"
+port: 8766
+description: >-
+  A trend following ETH/USDT trading bot. It pays its own running costs out of
+  its balance and dies if it falls below its survival floor.
+
+
+  Currently in paper mode: live prices, pretend money. The dashboard shows its
+  balance, profit, days of life left, open position, trades and a plain English
+  log of every decision, with a kill switch and a CSV export for tax time.
+developer: chadtfreak
+website: https://github.com/chadtfreak/cryptotradingbot
+submitter: chadtfreak
+submission: https://github.com/chadtfreak/cryptotradingbot
+repo: https://github.com/chadtfreak/cryptotradingbot
+support: https://github.com/chadtfreak/cryptotradingbot/issues
+gallery:
+  - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
+releaseNotes: >-
+  First release: paper trading, survival ledger and dashboard.
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""

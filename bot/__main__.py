@@ -35,7 +35,9 @@ def main() -> None:
         from .web import create_app
 
         password = os.environ.get("DASHBOARD_PASSWORD")
-        if args.host != "127.0.0.1" and not password:
+        # As an Umbrel app, Umbrel's own login sits in front of the dashboard.
+        behind_umbrel = os.environ.get("AUTH_HANDLED_BY_UMBREL") == "true"
+        if args.host != "127.0.0.1" and not password and not behind_umbrel:
             raise SystemExit("Refusing to listen on a public address without DASHBOARD_PASSWORD set.")
         if password == "change-me":
             raise SystemExit("Set your own DASHBOARD_PASSWORD (in docker-compose.yml) instead of change-me.")

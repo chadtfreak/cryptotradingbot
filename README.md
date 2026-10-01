@@ -6,7 +6,7 @@ Currently in **paper mode**: real live prices, pretend money. See [docs/SCOPE.md
 
 ## Run it on your Umbrel
 
-See [docs/UMBREL.md](docs/UMBREL.md). This is the best place for it to live long term.
+It installs as an Umbrel app with its own home screen icon. See [docs/UMBREL.md](docs/UMBREL.md). This is the best place for it to live long term.
 
 ## Run it on your computer
 

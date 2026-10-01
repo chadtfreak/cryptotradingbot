@@ -250,3 +250,24 @@ def test_web_password(monkeypatch):
     client = TestClient(create_app(engine, run_loop=False))
     assert client.get("/api/status").status_code == 401
     assert client.get("/api/status", auth=("me", "hunter2")).status_code == 200
+
+
+# Umbrel packaging
+
+def test_umbrel_versions_match():
+    import re
+    from pathlib import Path
+
+    version = Path("VERSION").read_text().strip()
+    manifest = Path("chad-survival-bot/umbrel-app.yml").read_text()
+    compose = Path("chad-survival-bot/docker-compose.yml").read_text()
+    assert re.search(r'^version: "(.+)"$', manifest, re.M).group(1) == version
+    assert f"ghcr.io/chadtfreak/cryptotradingbot:{version}" in compose
+
+
+def test_icons_served_without_password(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "hunter2")
+    engine, *_ = make_engine([100] * 60)
+    client = TestClient(create_app(engine, run_loop=False))
+    for f in ["icon.svg", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"]:
+        assert client.get(f"/static/{f}").status_code == 200
