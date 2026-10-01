@@ -1,0 +1,66 @@
+# Survival Bot: scope
+
+## The idea
+
+A crypto trading bot with its own USDT wallet that has to earn its keep. It pays its own running costs out of its balance. If its balance falls below a floor, it dies: it sells everything and stops for good. You watch it live on a dashboard and can pull the plug at any time.
+
+## Decisions so far
+
+| Question | Decision |
+|---|---|
+| Where it trades | A decentralised exchange (Uniswap v3 on Arbitrum is the plan for live), from a self-custody wallet. No exchange account, no KYC. |
+| Who you are | Australian. Every trade is a CGT event, so the bot records the USDT/AUD rate at every trade and exports a CSV for tax time. |
+| Bankroll | $100 USDT |
+| Control | Fully autonomous, with a kill switch on the dashboard |
+| Survival rule | Running costs are paid from the bot's balance before anything counts as profit. Below $50 it dies. |
+
+## The honest maths
+
+$100 is a small bankroll for a bot that pays rent. At $6 a month for a VPS, the bot needs to make **6% a month (about 72% a year) just to stand still**. Very few strategies do that reliably.
+
+The first backtest on the last 111 days of ETH/USDT (4h candles) showed this clearly:
+
+- the strategy itself made about **+18%** from trading
+- hosting costs took about **22%** of the starting balance
+- net result **-3.5%**, while simply holding ETH made +61% over the same period
+
+So the strategy isn't the main problem at this size. The rent is. Ways to fix it:
+
+1. Run the bot somewhere free or close to free (a Raspberry Pi at home, a free cloud tier) so running costs are near zero.
+2. Start with a bigger bankroll so $6 a month is a smaller share.
+3. Accept a shorter life and treat the first $100 as the price of learning.
+
+## Stages
+
+### Stage 1: paper trading (built)
+
+- Live ETH/USDT prices from Kraken's public API
+- Trend following strategy: EMA 20/50 crossover entries, trailing ATR stop, 2% risk per trade, spot only, no leverage
+- Realistic costs: 0.05% pool fee, 0.10% slippage and $0.05 gas per swap
+- Survival ledger: running costs charged hourly, life-left estimate, death below the floor
+- Daily loss limit: down 5% in a UTC day means it sells up and sits out until tomorrow
+- Dashboard: equity, P&L split into trading and costs, life left, position, chart, trades, a plain-English log of every decision, kill switch, CSV export
+- Backtester using exactly the same strategy and cost code
+
+**Exit criteria:** at least 4 weeks of paper trading where trading profit covers running costs, with no bugs in the log.
+
+### Stage 2: live on-chain trading
+
+- Generate a dedicated hot wallet on Arbitrum. Private key held in an environment variable on the server, never in the repo.
+- Live broker using the Uniswap v3 router: quote first, hard slippage limit, wait for confirmation, reconcile balances from the chain each tick.
+- Start with $100 USDT plus about $2 of ETH for gas.
+- Paper and live run side by side for a week so we can compare fills.
+
+### Stage 3: nice to haves
+
+- Phone alerts on trades, the daily loss limit and death
+- Simple deploy script for a VPS or Raspberry Pi
+- More strategies, chosen by backtest and paper results rather than gut feel
+- AUD figures throughout the dashboard
+
+## Risks
+
+- **Smart contract and wallet risk.** A hot wallet on a server can be drained if the server is compromised. Keep only what the bot needs in it.
+- **Strategy risk.** Trend following loses in choppy, sideways markets, often several trades in a row.
+- **Small sample.** One 111 day backtest with 7 trades proves very little either way.
+- **Tax.** The CSV helps, but check with an accountant how the ATO treats your situation.

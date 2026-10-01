@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Survival Bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="static/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #14171c; --muted: #66707d; --line: #e3e6ea;
+    --good: #12805c; --bad: #c4302b; --warn: #b26a00; --accent: #2c5be8; --accent-soft: #e8eefd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1215; --panel: #171b20; --ink: #e8ebef; --muted: #8b95a3; --line: #262c34;
+            --good: #3ccf95; --bad: #ff6b63; --warn: #f0a83a; --accent: #7a9cff; --accent-soft: #1d2640; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 60px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .pill.paper { background: var(--accent-soft); color: var(--accent); }
+  .pill.running { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+  .pill.paused, .pill.stopped { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+  .pill.dead { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, .btn { font: inherit; font-weight: 600; font-size: 14px; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-decoration: none; }
+  button.kill { background: var(--bad); border-color: var(--bad); color: #fff; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .grid { display: grid; gap: 14px; }
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .kpi .label { color: var(--muted); font-size: 13px; }
+  .kpi .value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .kpi .note { color: var(--muted); font-size: 12px; }
+  .good { color: var(--good); } .bad { color: var(--bad); }
+  .life { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 8px; }
+  .life > div { height: 100%; background: var(--good); transition: width 0.4s; }
+  .main { grid-template-columns: 2fr 1fr; margin-bottom: 14px; }
+  @media (max-width: 860px) { .main { grid-template-columns: 1fr; } }
+  .chartbox { position: relative; height: 300px; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
+  dt { color: var(--muted); } dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .log { max-height: 420px; overflow-y: auto; }
+  .event { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .event:last-child { border-bottom: 0; }
+  .event time { display: block; color: var(--muted); font-size: 12px; font-family: "JetBrains Mono", monospace; }
+  .event.trade { border-left: 3px solid var(--accent); padding-left: 10px; }
+  .event.warning { border-left: 3px solid var(--warn); padding-left: 10px; }
+  .event.error, .event.critical { border-left: 3px solid var(--bad); padding-left: 10px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.reason { white-space: normal; min-width: 260px; color: var(--muted); }
+  .empty { color: var(--muted); padding: 12px 0; }
+  .banner { display: none; background: color-mix(in srgb, var(--bad) 12%, var(--panel)); border: 1px solid var(--bad); color: var(--ink); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Survival Bot <span id="mode" class="pill paper">paper</span> <span id="status" class="pill running">running</span></h1>
+      <div class="sub" id="subtitle">Loading...</div>
+    </div>
+    <div class="controls">
+      <a class="btn" href="api/trades.csv">Export trades (CSV)</a>
+      <button id="resume">Resume</button>
+      <button id="kill" class="kill">Kill switch</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <section class="grid kpis">
+    <div class="card kpi"><div class="label">Equity</div><div class="value" id="equity">-</div><div class="note" id="equity-note"></div></div>
+    <div class="card kpi"><div class="label">Total P&amp;L</div><div class="value" id="pnl">-</div><div class="note">after trading and running costs</div></div>
+    <div class="card kpi"><div class="label">Trading P&amp;L</div><div class="value" id="trading-pnl">-</div><div class="note">what the strategy earned</div></div>
+    <div class="card kpi"><div class="label">Running costs paid</div><div class="value" id="costs">-</div><div class="note" id="costs-note"></div></div>
+    <div class="card kpi"><div class="label">Life left</div><div class="value" id="runway">-</div><div class="note" id="runway-note"></div><div class="life"><div id="lifebar" style="width:0"></div></div></div>
+  </section>
+
+  <section class="grid main">
+    <div class="card"><h2>Equity</h2><div class="chartbox"><canvas id="chart"></canvas></div></div>
+    <div class="card"><h2>Position</h2><div id="position"></div></div>
+  </section>
+
+  <section class="grid main">
+    <div class="card"><h2>Trades</h2><div class="tablewrap" id="trades"></div></div>
+    <div class="card"><h2>What I'm thinking</h2><div class="log" id="events"></div></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const usd = (n, sign = false) => n == null ? "-" : (sign && n > 0 ? "+" : "") + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const when = (ts) => new Date(ts * 1000).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const tone = (el, n) => { el.classList.toggle("good", n > 0); el.classList.toggle("bad", n < 0); };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let chart;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  return r.json();
+}
+
+function renderStatus(s) {
+  $("mode").textContent = s.mode;
+  $("status").textContent = s.status;
+  $("status").className = "pill " + s.status;
+  $("subtitle").textContent = `${s.pair} on ${s.interval_minutes / 60}h candles${s.price ? `, last price ${usd(s.price)}` : ""}. Born ${when(s.started_at)}.`;
+  $("equity").textContent = usd(s.equity);
+  $("equity-note").textContent = `started with ${usd(s.starting_balance)} USDT`;
+  $("pnl").textContent = usd(s.total_pnl, true); tone($("pnl"), s.total_pnl);
+  $("trading-pnl").textContent = usd(s.trading_pnl, true); tone($("trading-pnl"), s.trading_pnl);
+  $("costs").textContent = usd(s.costs_paid);
+  $("costs-note").textContent = `${usd(s.monthly_cost)} USD a month for hosting`;
+  $("runway").textContent = s.runway_days == null ? "-" : `${Math.floor(s.runway_days)} days`;
+  $("runway-note").textContent = `until equity hits the ${usd(s.floor)} floor, if it makes nothing`;
+  const life = s.equity == null ? 0 : Math.max(0, Math.min(1, (s.equity - s.floor) / (s.starting_balance - s.floor)));
+  $("lifebar").style.width = (life * 100) + "%";
+  $("lifebar").style.background = life > 0.5 ? "var(--good)" : life > 0.2 ? "var(--warn)" : "var(--bad)";
+  $("kill").disabled = s.status === "dead" || s.status === "stopped";
+  $("resume").disabled = !(s.status === "stopped" || s.status === "paused");
+
+  const banner = $("banner");
+  const msg = s.status === "dead" ? "The bot hit its survival floor and has stopped for good."
+    : s.last_error ? `Last check failed: ${s.last_error}` : "";
+  banner.style.display = msg ? "block" : "none";
+  banner.textContent = msg;
+
+  const p = s.position;
+  $("position").innerHTML = !p ? `<div class="empty">Holding ${usd(s.cash)} USDT, no open position. Waiting for an uptrend.</div>` : `
+    <dl>
+      <dt>Holding</dt><dd>${p.qty.toFixed(5)} ${esc(s.asset)}</dd>
+      <dt>Cost</dt><dd>${usd(p.cost_basis)}</dd>
+      <dt>Value now</dt><dd>${usd(p.value)}</dd>
+      <dt>Unrealised</dt><dd class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}</dd>
+      <dt>Stop</dt><dd>${usd(p.stop)}</dd>
+      <dt>Cash</dt><dd>${usd(s.cash)}</dd>
+    </dl>`;
+}
+
+function renderChart(points) {
+  if (typeof Chart === "undefined") return;
+  const data = points.map((p) => ({ x: p.ts * 1000, y: p.equity }));
+  const labels = data.map((d) => new Date(d.x).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }));
+  const css = getComputedStyle(document.documentElement);
+  if (!chart) {
+    chart = new Chart($("chart"), {
+      type: "line",
+      data: { labels, datasets: [{ data: data.map((d) => d.y), borderColor: css.getPropertyValue("--accent").trim(), borderWidth: 2, pointRadius: data.length < 3 ? 3 : 0, tension: 0.2, fill: false }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 6, color: css.getPropertyValue("--muted").trim() }, grid: { display: false } },
+          y: { ticks: { color: css.getPropertyValue("--muted").trim() }, grid: { color: css.getPropertyValue("--line").trim() } },
+        },
+      },
+    });
+  } else {
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = data.map((d) => d.y);
+    chart.data.datasets[0].pointRadius = data.length < 3 ? 3 : 0;
+    chart.update();
+  }
+}
+
+function renderTrades(trades, asset) {
+  if (!trades.length) { $("trades").innerHTML = `<div class="empty">No trades yet.</div>`; return; }
+  $("trades").innerHTML = `<table><thead><tr><th>When</th><th>Side</th><th>Qty</th><th>Price</th><th>Value</th><th>P&amp;L</th><th>Why</th></tr></thead><tbody>${
+    trades.map((t) => `<tr>
+      <td>${when(t.ts)}</td><td>${t.side.toUpperCase()}</td><td>${t.qty.toFixed(5)}</td><td>${usd(t.price)}</td><td>${usd(t.notional)}</td>
+      <td class="${t.pnl > 0 ? "good" : t.pnl < 0 ? "bad" : ""}">${t.pnl == null ? "" : usd(t.pnl, true)}</td>
+      <td class="reason">${esc(t.reason)}</td></tr>`).join("")
+  }</tbody></table>`;
+}
+
+function renderEvents(events) {
+  $("events").innerHTML = events.length ? events.map((e) =>
+    `<div class="event ${e.level}"><time>${when(e.ts)}</time>${esc(e.message)}</div>`).join("") : `<div class="empty">Nothing yet.</div>`;
+}
+
+async function refresh() {
+  try {
+    const [s, eq, trades, events] = await Promise.all([api("api/status"), api("api/equity"), api("api/trades"), api("api/events")]);
+    renderStatus(s); renderChart(eq); renderTrades(trades, s.asset); renderEvents(events);
+  } catch (e) {
+    $("banner").style.display = "block";
+    $("banner").textContent = `Can't reach the bot: ${e.message}`;
+  }
+}
+
+$("kill").onclick = async () => {
+  if (!confirm("Sell everything and stop trading?")) return;
+  renderStatus(await api("api/kill", { method: "POST" })); refresh();
+};
+$("resume").onclick = async () => { renderStatus(await api("api/resume", { method: "POST" })); refresh(); };
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>
