@@ -34,7 +34,7 @@ This money stays in your account. It will also be ready for when Claude goes liv
 1. Go to **app.hyperliquid-testnet.xyz** and connect the **same wallet**.
 2. Find the **faucet** (Portfolio page, or the "Claim mock USDC" button) and claim **1,000 mock USDC**.
 
-3. Move it into your **Perps** balance: open **Portfolio**, tap **Transfer**, and move the USDC from **Spot to Perps**. The faucet puts it in Spot, but the bot trades perps.
+3. Check your **Account Type** on the Portfolio page. New accounts are usually a **Unified account**, where your Spot USDC backs perps directly and nothing needs moving. If yours says **Standard**, move the USDC from Spot to Perps with the Spot/Perps transfer. Don't use **EVM ⇄ Core**: that sends money to a different blockchain.
 
 Don't use **Deposit** on the testnet site. It asks you to switch to "Arbitrum Sepolia", a test network, and will show a balance of 0. The faucet is the only way to get testnet money.
 

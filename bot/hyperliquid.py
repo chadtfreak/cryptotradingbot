@@ -39,6 +39,31 @@ def round_size(sz: float, sz_decimals: int) -> float:
     return round(sz, sz_decimals)
 
 
+UNIFIED_MODES = ("unifiedAccount", "portfolioMargin")
+
+
+def account_state(info, account: str, coin: str = "ETH") -> AccountState:
+    """Account value and position, for either account type.
+
+    Standard accounts keep a separate perps balance. Unified accounts (the default for
+    new accounts) back perps with the spot USDC balance and report the perps value as
+    zero, so there the value is spot USDC plus the open position's unrealised profit."""
+    st = info.user_state(account)
+    qty, entry, upnl = 0.0, None, 0.0
+    for p in st.get("assetPositions", []):
+        pos = p["position"]
+        if pos["coin"] == coin and float(pos["szi"]) != 0:
+            qty, entry = float(pos["szi"]), float(pos["entryPx"])
+        upnl += float(pos.get("unrealizedPnl") or 0)
+    mode = info.query_user_abstraction_state(account)
+    if mode in UNIFIED_MODES:
+        spot = sum(float(b["total"]) for b in info.spot_user_state(account).get("balances", []) if b["coin"] == "USDC")
+        value = spot + upnl
+    else:
+        value = float(st["marginSummary"]["accountValue"])
+    return AccountState(value, qty, entry)
+
+
 def agent_address(agent_key: str) -> str:
     from eth_account import Account
     return Account.from_key(agent_key).address
@@ -91,13 +116,7 @@ class HyperliquidVenue:
         return float(self.info.all_mids()[self.coin])
 
     def state(self) -> AccountState:
-        st = self.info.user_state(self.account)
-        value = float(st["marginSummary"]["accountValue"])
-        for p in st.get("assetPositions", []):
-            pos = p["position"]
-            if pos["coin"] == self.coin and float(pos["szi"]) != 0:
-                return AccountState(value, float(pos["szi"]), float(pos["entryPx"]))
-        return AccountState(value, 0.0, None)
+        return account_state(self.info, self.account, self.coin)
 
     def stop_orders(self) -> list[dict]:
         orders = self.info.frontend_open_orders(self.account)
@@ -188,7 +207,7 @@ def check_credentials(network: str, account: str, agent_key: str) -> tuple[bool,
         if (role or {}).get("role") != "agent" or owner.lower() != account.lower():
             return False, (f"That API wallet ({agent}) isn't approved for {account} on {network}. "
                            "Create it under More, API on the Hyperliquid site while connected with your main wallet."), None
-        value = float(info.user_state(account)["marginSummary"]["accountValue"])
+        value = account_state(info, account).account_value
         if value < MIN_ORDER_USD:
             spot = sum(float(b["total"]) for b in info.spot_user_state(account).get("balances", []) if b["coin"] == "USDC")
             if spot >= MIN_ORDER_USD:

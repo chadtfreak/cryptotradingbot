@@ -203,3 +203,35 @@ def test_venue_endpoint_locks_mainnet_and_hides_key(monkeypatch):
     assert r.status_code == 400 and "locked" in r.json()["detail"]
     body = client.get("/api/claude/status").text
     assert "0xSECRET" not in body and '"venue":"testnet"' in body
+
+
+# Account types
+
+class FakeInfo:
+    def __init__(self, mode, perps_value, spot_usdc, positions=()):
+        self.mode, self.perps_value, self.spot_usdc, self.positions = mode, perps_value, spot_usdc, positions
+
+    def user_state(self, account):
+        return {"marginSummary": {"accountValue": str(self.perps_value)},
+                "assetPositions": [{"position": {"coin": c, "szi": str(q), "entryPx": str(e), "unrealizedPnl": str(u)}}
+                                   for c, q, e, u in self.positions]}
+
+    def spot_user_state(self, account):
+        return {"balances": [{"coin": "USDC", "total": str(self.spot_usdc)}, {"coin": "HYPE", "total": "3"}]}
+
+    def query_user_abstraction_state(self, account):
+        return self.mode
+
+
+def test_unified_account_reads_spot_usdc_plus_unrealised():
+    from bot.hyperliquid import account_state
+    info = FakeInfo("unifiedAccount", 0.0, 999.0, [("ETH", -0.02, 2700.0, 1.5)])
+    st = account_state(info, "0xabc")
+    assert st.account_value == pytest.approx(1000.5)
+    assert st.qty == -0.02 and st.entry_price == 2700.0
+
+
+def test_standard_account_reads_perps_value():
+    from bot.hyperliquid import account_state
+    info = FakeInfo("default", 250.0, 999.0)
+    assert account_state(info, "0xabc").account_value == 250.0
