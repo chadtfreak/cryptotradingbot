@@ -24,7 +24,7 @@ Send at least $10 of USDC and about $1 of ETH to your new wallet's address, **on
 
 Hyperliquid only gives out free test money to wallets that have used the real site, to stop bots draining it.
 
-1. Go to **app.hyperliquid.xyz** and click **Connect**, then choose your wallet.
+1. Go to **app.hyperliquid.xyz** and click **Connect**, then choose your wallet. Check the address has no "-testnet" in it: the testnet site can't see real USDC.
 2. Click **Deposit** and deposit **at least 5 USDC**.
 
 This money stays in your account. It will also be ready for when Claude goes live.
@@ -33,6 +33,8 @@ This money stays in your account. It will also be ready for when Claude goes liv
 
 1. Go to **app.hyperliquid-testnet.xyz** and connect the **same wallet**.
 2. Find the **faucet** (Portfolio page, or the "Claim mock USDC" button) and claim **1,000 mock USDC**.
+
+Don't use **Deposit** on the testnet site. It asks you to switch to "Arbitrum Sepolia", a test network, and will show a balance of 0. The faucet is the only way to get testnet money.
 
 The bot only treats $100 of it as Claude's bankroll, so it behaves exactly as it will with real money.
 
