@@ -73,6 +73,7 @@ class ClaudeSettings:
     min_check_hours: float = 2.0
     review_every_days: int = 7
     web_searches_per_wake: int = 2
+    allow_mainnet: bool = False  # real money stays locked until the testnet run has proved itself
 
 
 @dataclass

@@ -39,6 +39,10 @@ class Store:
         with self.lock:
             self.conn.executescript(SCHEMA)
 
+    def close(self) -> None:
+        with self.lock:
+            self.conn.close()
+
     def _exec(self, sql: str, args: tuple = ()) -> sqlite3.Cursor:
         with self.lock:
             cur = self.conn.execute(sql, args)

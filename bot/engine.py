@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from .broker import PaperBroker
+from .broker import Fill, PaperBroker
 from .config import Settings
 from .store import Store
 from .strategy import Decision, on_candle_close, position_size, stop_hit
@@ -53,6 +53,8 @@ class Engine:
         self.broker = broker or PaperBroker(settings.costs)
         self.clock = clock
         self.brain = brain or MathsBrain()
+        self.live = getattr(self.broker, "live", False)
+        self.retired = False  # set when replaced by a venue switch
         self.lock = threading.Lock()
         self.last_price: float | None = None
         self.last_error: str | None = None
@@ -101,6 +103,8 @@ class Engine:
     # Main loop step
     def tick(self) -> None:
         with self.lock:
+            if self.retired:
+                return
             try:
                 self._tick()
                 self.last_error = None
@@ -110,15 +114,18 @@ class Engine:
 
     def _tick(self) -> None:
         now = int(self.clock())
-        price = self.market.price()
+        price = self.broker.venue.price() if self.live else self.market.price()
         self.last_price = price
+        if self.live and self.status != DEAD:
+            self._reconcile(now, price)
         if self.store.get("start_price") is None:
             self.store.set("start_price", price)
         if self.status == DEAD:
             return
 
         self._pay_running_costs(now)
-        self._pay_funding(now, price)
+        if not self.live:  # on a real exchange, funding is already in the account value
+            self._pay_funding(now, price)
         equity = self.equity(price)
         self._roll_day(now, equity)
         self.store.add_equity(now - now % EQUITY_BUCKET, equity, self.cash, self.qty, price)
@@ -143,7 +150,8 @@ class Engine:
             return
 
         stop = self.store.get("stop")
-        if self.qty != 0 and stop_hit(price, stop, self.qty):
+        exchange_has_stop = self.live and self.store.get("exchange_stop_ok")
+        if self.qty != 0 and not exchange_has_stop and stop_hit(price, stop, self.qty):
             moved = "fell to or below" if self.qty > 0 else "rose to or above"
             self._close(price, now, f"Stop hit: price {price:,.2f} {moved} stop {stop:,.2f}.")
 
@@ -154,6 +162,14 @@ class Engine:
 
     # Guardrails: every brain's decision goes through here
     def apply(self, d: Decision, price: float, now: int) -> None:
+        try:
+            self._apply(d, price, now)
+        except Exception as exc:
+            if not self.live:
+                raise
+            self.store.log(f"The exchange rejected the trade: {exc}", level="error", ts=now)
+
+    def _apply(self, d: Decision, price: float, now: int) -> None:
         if d.action in ("buy", "short"):
             self._apply_open(d, price, now)
         elif d.action == "sell":
@@ -226,6 +242,7 @@ class Engine:
             self.store.log(f"Guardrail: stop {new:,.2f} is on the wrong side of the price, ignored.", level="warning", ts=now)
         else:
             self.store.set("stop", new)
+            self._sync_stop(now)
 
     # Survival bookkeeping
     def _pay_running_costs(self, now: int) -> None:
@@ -236,6 +253,53 @@ class Engine:
         cost = self.s.survival.daily_cost_usd * elapsed / 86400
         self.store.set("last_cost_ts", now)
         self.charge(now, "running_cost", cost, f"Hosting for {elapsed / 3600:.1f}h")
+
+    # Live exchange
+    def _sync_stop(self, now: int) -> None:
+        """Mirror the bot's stop as a real stop order on the exchange."""
+        if not self.live:
+            return
+        try:
+            self.broker.sync_stop(self.qty, self.store.get("stop"))
+            self.store.set("exchange_stop_ok", self.qty != 0 and self.store.get("stop") is not None)
+        except Exception as exc:
+            self.store.set("exchange_stop_ok", False)
+            self.store.log(f"Couldn't place the stop order on the exchange ({exc}). The bot will watch the stop itself.", level="error", ts=now)
+
+    def _reconcile(self, now: int, price: float) -> None:
+        """The exchange is the truth: rebuild balance and position from it every tick.
+
+        Equity is the bot's bankroll plus whatever the exchange account has gained or lost
+        since the bot went live, minus the hosting and thinking it owes."""
+        st = self.broker.venue.state()
+        if abs(st.qty) * price < 1.0:  # rounding dust left after a close
+            st.qty, st.entry_price = 0.0, None
+        if self.store.get("live_base") is None:
+            self.store.set("live_base", st.account_value)
+            self.store.set("live_started_at", now)
+            self.store.log(f"Connected to Hyperliquid {self.broker.venue.network}. The account holds {st.account_value:,.2f} USDC; "
+                           f"I'll trade it as a {self.s.bot.starting_balance:.0f} USDC bankroll.", ts=now)
+        start = self.store.get("live_started_at")
+        owed = -(self.store.ledger_total_since("running_cost", start) + self.store.ledger_total_since("ai_cost", start))
+        equity = self.s.bot.starting_balance + (st.account_value - self.store.get("live_base")) - owed
+
+        prev_qty = self.qty
+        if prev_qty != 0 and st.qty == 0:
+            basis = self.store.get("cost_basis")
+            pnl = prev_qty * price - basis
+            side = "sell" if prev_qty > 0 else "buy"
+            fill = Fill(side, abs(prev_qty), price, abs(prev_qty) * price, 0.0, 0.0)
+            self.store.add_trade(now, fill, pnl, self.market.usd_to_aud(), "Closed on the exchange (stop order fired or closed by hand).")
+            self.store.log(f"My position was closed on the exchange, about {pnl:+.2f} USDC. Probably the stop order fired.", level="trade", ts=now)
+            self.store.set("stop", None)
+            self.store.set("exchange_stop_ok", False)
+            self.broker.sync_stop(0, None)
+        elif abs(st.qty - prev_qty) > 1e-9:
+            self.store.log(f"Synced my position from the exchange: {prev_qty:+.5f} to {st.qty:+.5f} ETH.", level="warning", ts=now)
+
+        self.store.set("qty", st.qty)
+        self.store.set("cost_basis", st.qty * st.entry_price if st.qty else 0.0)
+        self.store.set("cash", equity - st.qty * price)
 
     def _pay_funding(self, now: int, price: float) -> None:
         """Perp funding, settled hourly: longs pay shorts when the rate is positive."""
@@ -274,6 +338,7 @@ class Engine:
         self.store.set("cost_basis", (self.store.get("cost_basis") if adding else 0.0) - fill.cash_delta)
         self.store.set("stop", stop)
         self.store.add_trade(now, fill, None, self.market.usd_to_aud(), reason)
+        self._sync_stop(now)
         label = ("ADD TO LONG" if adding else "BUY") if side > 0 else ("ADD TO SHORT" if adding else "SHORT")
         self.store.log(f"{label} {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f} "
                        f"({fill.notional:.2f} USDC, fees {fill.fee + fill.gas:.2f}), stop {stop:,.2f}. {reason}", level="trade", ts=now)
@@ -289,7 +354,7 @@ class Engine:
         long = self.qty > 0
         qty = abs(self.qty) * fraction
         basis = self.store.get("cost_basis") * fraction
-        fill = self.broker.sell(qty, price) if long else self.broker.buy_qty(qty, price)
+        fill = self.broker.sell(qty, price, reduce_only=True) if long else self.broker.buy_qty(qty, price, reduce_only=True)
         pnl = fill.cash_delta - basis
         self.store.set("cash", self.cash + fill.cash_delta)
         if fraction >= 1:
@@ -299,6 +364,7 @@ class Engine:
         else:
             self.store.set("qty", self.qty - qty if long else self.qty + qty)
             self.store.set("cost_basis", self.store.get("cost_basis") - basis)
+        self._sync_stop(now)
         self.store.add_trade(now, fill, pnl, self.market.usd_to_aud(), reason)
         what = "SELL" if long else "BUY BACK"
         label = f"{what} {fraction:.0%} of position:" if fraction < 1 else ("SELL" if long else "CLOSE SHORT")
@@ -346,7 +412,7 @@ class Engine:
         return {
             "bot": self.brain.name,
             "label": self.brain.label,
-            "mode": self.s.bot.mode,
+            "mode": self.broker.venue.network if self.live else "paper",
             "status": self.status,
             "pair": self.s.bot.pair,
             "asset": self.s.bot.asset,

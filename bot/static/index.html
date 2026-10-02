@@ -73,6 +73,13 @@
   .keyform { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .keyform input { flex: 1; min-width: 200px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
   .msg { font-size: 13px; margin-top: 6px; }
+  .venue { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+  .venue-opts { display: grid; gap: 6px; margin: 10px 0; font-size: 14px; }
+  #hlfields { display: grid; gap: 8px; margin-bottom: 10px; }
+  #hlfields input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  .warnline { color: var(--warn); margin: 8px 0 10px; }
+  .pill.testnet { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+  .pill.mainnet { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
   .chartbox { position: relative; height: 300px; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
   dt { color: var(--muted); } dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
@@ -132,6 +139,25 @@
       <div class="msg" id="keymsg"></div>
     </div>
     <div style="text-align:right"><a href="#" id="keychange" class="sub hidden">Change API key</a></div>
+    <div class="venue">
+      <div class="label"><strong>Where Claude trades</strong> <span id="venuepill" class="pill paper">paper</span> <a href="#" id="venuechange" class="sub">Change</a></div>
+      <div class="sub" id="venueinfo"></div>
+      <div id="venueform" class="hidden">
+        <div class="venue-opts">
+          <label><input type="radio" name="venue" value="paper"> Paper trading (pretend money)</label>
+          <label><input type="radio" name="venue" value="testnet"> Hyperliquid testnet (free test money, real orders)</label>
+          <label id="mainnetopt"><input type="radio" name="venue" value="mainnet"> Hyperliquid (real money)</label>
+        </div>
+        <div id="hlfields" class="hidden">
+          <input id="hlaccount" placeholder="Main wallet address (0x...)" autocomplete="off">
+          <input id="hlkey" type="password" placeholder="API wallet private key (0x...)" autocomplete="off">
+          <div class="sub">The API wallet can trade but can't withdraw. Its key is stored only on this device. Never paste your main wallet's key here.</div>
+        </div>
+        <div class="sub warnline">Switching starts a new life on that venue. Claude keeps its lessons, and the old history is archived. Close any open position first.</div>
+        <button id="venuesave">Switch</button>
+        <div class="msg" id="venuemsg"></div>
+      </div>
+    </div>
   </section>
 
   <section class="grid kpis">
@@ -284,6 +310,12 @@ function renderBrain(b) {
   $("keyform").classList.toggle("hidden", b.key_from_env);
   $("keychange").classList.toggle("hidden", !b.key_set || b.key_from_env || showKeyForm);
 
+  const v = b.venue || "paper";
+  $("venuepill").textContent = v;
+  $("venuepill").className = "pill " + v;
+  $("venueinfo").textContent = v === "paper" ? "Pretend money at live prices, with Hyperliquid's fees and funding."
+    : `Real orders on Hyperliquid ${v === "testnet" ? "testnet with free test money" : "with real money"}, account ${b.venue_account || ""}. Stops are placed on the exchange.`;
+  $("mainnetopt").classList.toggle("hidden", !b.allow_mainnet);
   $("lessons-meta").textContent = b.lessons_updated ? `Last rewritten in its weekly review, ${when(b.lessons_updated)}` : "Claude reviews its own decisions once a week and writes its lessons here.";
   $("lessons").textContent = b.lessons || "";
 }
@@ -351,6 +383,26 @@ $("kill").onclick = async () => {
   renderStatus(await api(`api/${current}/kill`, { method: "POST" })); refresh();
 };
 $("resume").onclick = async () => { renderStatus(await api(`api/${current}/resume`, { method: "POST" })); refresh(); };
+$("venuechange").onclick = (e) => { e.preventDefault(); $("venueform").classList.toggle("hidden"); };
+document.querySelectorAll('input[name="venue"]').forEach((r) => r.onchange = () => $("hlfields").classList.toggle("hidden", r.value === "paper" && r.checked));
+$("venuesave").onclick = async () => {
+  const picked = document.querySelector('input[name="venue"]:checked');
+  if (!picked) { $("venuemsg").textContent = "Pick a venue first."; return; }
+  if (!confirm("Start a new life on this venue? Claude keeps its lessons; the current history is archived.")) return;
+  $("venuemsg").textContent = picked.value === "paper" ? "Switching..." : "Checking your account and API wallet with Hyperliquid...";
+  $("venuemsg").className = "msg";
+  try {
+    const s = await api("api/claude/venue", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ venue: picked.value, account: $("hlaccount").value.trim(), agent_key: $("hlkey").value.trim() }) });
+    $("hlkey").value = "";
+    $("venueform").classList.add("hidden");
+    $("venuemsg").textContent = "";
+    renderStatus(s); refresh();
+  } catch (e) {
+    $("venuemsg").textContent = e.message;
+    $("venuemsg").className = "msg bad";
+  }
+};
 $("keychange").onclick = (e) => { e.preventDefault(); showKeyForm = true; refresh(); };
 $("keysave").onclick = async () => {
   const key = $("keyinput").value.trim();

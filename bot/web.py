@@ -33,14 +33,18 @@ def create_app(engines: "dict[str, Engine] | Engine", run_loop: bool = True) -> 
     if isinstance(engines, Engine):
         engines = {engines.brain.name: engines}
 
-    async def loop(engine: Engine):
+    async def loop(name: str):
         while True:
-            await asyncio.to_thread(engine.tick)
+            engine = engines[name]  # looked up each time, so a venue switch takes effect
+            try:
+                await asyncio.to_thread(engine.tick)
+            except Exception:  # never let one bad tick stop the loop
+                pass
             await asyncio.sleep(engine.s.bot.poll_seconds)
 
     @asynccontextmanager
     async def lifespan(app):
-        tasks = [asyncio.create_task(loop(e)) for e in engines.values()] if run_loop else []
+        tasks = [asyncio.create_task(loop(n)) for n in list(engines)] if run_loop else []
         yield
         for t in tasks:
             t.cancel()
@@ -111,6 +115,31 @@ def create_app(engines: "dict[str, Engine] | Engine", run_loop: bool = True) -> 
         engine.store.set("anthropic_api_key", None)
         engine.store.log("API key removed. I'll stop thinking until a new one is added.", level="warning")
         return engine.summary()
+
+    @app.post("/api/claude/venue")
+    async def set_venue(body: dict = Body(...)):
+        from .hyperliquid import check_credentials
+        from .venues import switch_venue
+
+        engine = get("claude")
+        name = body.get("venue")
+        if name not in ("paper", "testnet", "mainnet"):
+            raise HTTPException(400, "Unknown venue.")
+        if name == "mainnet" and not engine.s.claude.allow_mainnet:
+            raise HTTPException(400, "Real money is locked until the testnet run has proved itself.")
+        venue = {"name": name}
+        if name != "paper":
+            account = (body.get("account") or "").strip()
+            key = (body.get("agent_key") or "").strip()
+            ok, message, _ = await asyncio.to_thread(check_credentials, name, account, key)
+            if not ok:
+                raise HTTPException(400, message)
+            venue.update(account=account, agent_key=key)
+        try:
+            engines["claude"] = await asyncio.to_thread(switch_venue, engine.s, engine, venue)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return engines["claude"].summary()
 
     @app.get("/api/{bot}/trades.csv")
     def trades_csv(bot: str):

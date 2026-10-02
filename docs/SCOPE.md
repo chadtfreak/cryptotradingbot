@@ -103,7 +103,7 @@ Risks accepted: a young platform with a small validator set and past interventio
 ### Stage 2: live on Hyperliquid
 
 1. Paper trading with Hyperliquid fees, funding and shorting (done in version 1.3).
-2. Run against Hyperliquid's testnet with pretend funds to prove orders, on-exchange stops and the API key work.
+2. Run against Hyperliquid's testnet with pretend funds to prove orders, on-exchange stops and the API key work (built in version 1.4, see [HYPERLIQUID.md](HYPERLIQUID.md)).
 3. Create a trade-only API wallet, kept on the Umbrel. The main wallet key never touches it.
 4. Deposit $100 USDC from Arbitrum and switch Claude to live. The maths bot can stay on paper as the benchmark.
 

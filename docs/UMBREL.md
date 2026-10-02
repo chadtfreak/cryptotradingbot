@@ -23,6 +23,10 @@ Claude needs an Anthropic API key to think. It's billed separately from a Claude
 
 The key is stored only on your Umbrel. It never goes to GitHub, and the dashboard never shows it again. Claude takes its first look at the market within a minute.
 
+## Trading on Hyperliquid
+
+To move Claude from paper trading to Hyperliquid's testnet, follow [HYPERLIQUID.md](HYPERLIQUID.md).
+
 ## Moving over from the terminal version
 
 If you already ran the bot with the terminal commands, this copies its history into the app so it carries on the same life instead of being born again.

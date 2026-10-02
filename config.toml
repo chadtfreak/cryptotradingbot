@@ -68,3 +68,4 @@ min_minutes_between_wakes = 30
 min_check_hours = 1.0            # shortest check-in Claude can schedule for itself
 review_every_days = 7
 web_searches_per_wake = 2        # news searches allowed per check, when budget allows
+allow_mainnet = false            # real-money Hyperliquid stays locked until the testnet run has proved itself

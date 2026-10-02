@@ -529,6 +529,9 @@ class ClaudeBrain:
         last = eng.store.decisions(1, kind="decision")
         return {"brain": {
             "key_set": bool(self.api_key(eng)),
+            "venue": (eng.store.get("venue") or {"name": "paper"})["name"],
+            "venue_account": (eng.store.get("venue") or {}).get("account"),
+            "allow_mainnet": self.c.allow_mainnet,
             "style": eng.g.style,
             "key_from_env": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "tier": tier["name"] if tier else None,
