@@ -116,7 +116,7 @@
   <section class="card brain hidden" id="brain">
     <h2>Claude's brain</h2>
     <div class="brain-grid">
-      <div><div class="label">Mode</div><div class="value"><span id="tier" class="pill">-</span> <span id="model" class="sub"></span></div></div>
+      <div><div class="label">Mode</div><div class="value"><span id="tier" class="pill">-</span> <span id="style" class="pill dead hidden"></span> <span id="model" class="sub"></span></div></div>
       <div><div class="label">Thinking budget this month</div><div class="value" id="spend">-</div><div class="bar"><div id="spendbar" style="width:0"></div></div></div>
       <div><div class="label">Last check</div><div class="value" id="lastwake">-</div><div class="sub" id="nextwake"></div></div>
     </div>
@@ -257,6 +257,9 @@ function renderBrain(b) {
   $("tier").className = "pill " + (b.tier || "");
   $("model").textContent = b.key_set ? (b.model ? b.model.replace("claude-", "") : "") : "";
   $("tier").title = TIER_TEXT[b.tier] || "";
+  $("style").textContent = b.style || "";
+  $("style").classList.toggle("hidden", b.style !== "full send");
+  $("style").title = "Loose guardrails: no trade or daily loss limits, up to 25% risk per trade. Only the floor and budget hold it back.";
   $("spend").textContent = `$${b.spent_this_month.toFixed(2)} of $${b.budget.toFixed(2)}`;
   const used = Math.min(1, b.spent_this_month / b.budget);
   $("spendbar").style.width = (used * 100) + "%";

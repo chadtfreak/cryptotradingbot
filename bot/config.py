@@ -38,7 +38,6 @@ class CostSettings:
 class SurvivalSettings:
     monthly_running_cost_usd: float = 6.0
     floor_usd: float = 50.0
-    daily_loss_limit_pct: float = 5.0
 
     @property
     def daily_cost_usd(self) -> float:
@@ -47,11 +46,15 @@ class SurvivalSettings:
 
 @dataclass
 class GuardrailSettings:
-    """Hard limits in code. No brain, maths or Claude, can override these."""
+    """Hard limits in code that the bot's brain cannot override. Each bot has its own set."""
+    style: str = "careful"  # "careful" or "full send": also sets Claude's trading personality
     max_risk_per_trade: float = 0.03  # max loss if the stop is hit, as a share of equity
     min_stop_distance_pct: float = 1.0
     max_stop_distance_pct: float = 15.0
-    max_trades_per_day: int = 4
+    max_trades_per_day: int = 4  # 0 means no limit
+    daily_loss_limit_pct: float = 5.0  # 0 means no daily limit
+    allow_adding: bool = False  # buy more while already holding
+    stops_only_up: bool = True
 
 
 @dataclass
@@ -65,6 +68,7 @@ class ClaudeSettings:
     heartbeat_hours: float = 24.0
     move_trigger_pct: float = 3.0
     min_minutes_between_wakes: int = 60
+    min_check_hours: float = 2.0
     review_every_days: int = 7
     web_searches_per_wake: int = 2
 
@@ -76,6 +80,7 @@ class Settings:
     costs: CostSettings = field(default_factory=CostSettings)
     survival: SurvivalSettings = field(default_factory=SurvivalSettings)
     guardrails: GuardrailSettings = field(default_factory=GuardrailSettings)
+    claude_guardrails: GuardrailSettings = field(default_factory=GuardrailSettings)
     claude: ClaudeSettings = field(default_factory=ClaudeSettings)
 
 
@@ -98,6 +103,7 @@ def load_settings(path: str | Path = "config.toml") -> Settings:
         costs=_fill(CostSettings, raw.get("costs", {})),
         survival=_fill(SurvivalSettings, raw.get("survival", {})),
         guardrails=_fill(GuardrailSettings, raw.get("guardrails", {})),
+        claude_guardrails=_fill(GuardrailSettings, raw.get("claude_guardrails", raw.get("guardrails", {}))),
         claude=_fill(ClaudeSettings, raw.get("claude", {})),
     )
     if settings.bot.mode != "paper":

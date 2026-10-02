@@ -24,6 +24,7 @@ class Decision:
     reason: str
     stop: float | None = None
     size_usd: float | None = None  # None means size by the risk rule
+    sell_fraction: float = 1.0  # for sells: share of the position to sell
 
 
 @dataclass

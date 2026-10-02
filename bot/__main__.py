@@ -48,7 +48,8 @@ def main() -> None:
 
             brain = ClaudeBrain(settings)
             brain.rival = maths
-            engines = {"claude": Engine(settings, KrakenMarket(settings.bot.pair), Store(settings.claude.db_path), brain=brain), **engines}
+            engines = {"claude": Engine(settings, KrakenMarket(settings.bot.pair), Store(settings.claude.db_path), brain=brain,
+                                       guardrails=settings.claude_guardrails), **engines}
         print(f"Dashboard: http://{args.host}:{args.port}")
         uvicorn.run(create_app(engines), host=args.host, port=args.port, log_level="warning")
 

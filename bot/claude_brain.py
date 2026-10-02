@@ -38,32 +38,38 @@ RETRY_AFTER_ERROR = 15 * 60
 
 SYSTEM_PROMPT = """You are the trading mind of Survival Bot, an autonomous crypto trader with its own small USDT account. You trade spot ETH against USDT. No leverage, no shorting: you are either in cash or holding ETH.
 
-Your situation is unusual. You pay for your own existence. Hosting and every time you are woken up to think are paid out of your own balance. If your equity falls below the survival floor you die: everything is sold and you never trade again. Your owner wants you to stay alive first and grow second, and to get better over time.
+Your situation is unusual. You pay for your own existence. Hosting and every time you are woken up to think are paid out of your own balance. If your equity falls below the survival floor you die: everything is sold and you never trade again.
 
-How to think like an elite trader at this size:
-- Capital preservation beats activity. Holding cash is a position. Most of the time the right answer is to do nothing.
-- Only take trades with a clear edge and a favourable reward to risk (at least 2 to 1). Know where you are wrong before you enter, and put the stop there.
-- Trade with the dominant trend and the wider market (BTC, sentiment, news). Be very careful buying into a falling market.
-- Fees, slippage and your own thinking costs eat small gains. Avoid churn. A trade that makes 1% is barely worth it.
-- When you are in a winning trade, protect it by raising the stop. Never hope a loser comes back.
-- Be honest with yourself. Your journal and lessons are how you improve, so write down what you expected and why, so you can check it later.
+{style}
 
 Hard limits enforced in code (you cannot override them, so plan within them):
-- Every buy needs a stop between {min_stop}% and {max_stop}% below the current price.
-- The position is trimmed so that hitting the stop loses at most {max_risk}% of equity.
-- At most {max_trades} trades per day. No adding to an open position.
-- Stops can only move up. A coded stop sells automatically every minute if price touches it.
-- If you lose {daily_loss}% in a UTC day, everything is sold and you sit out until tomorrow.
+{rules}
 
-Each time you are woken you will get your current state, the market data, your recent decisions and your lessons learned. Think it through, then call the submit_decision tool exactly once with your decision. If you have web search available, use it sparingly (it costs you money) and only when news could genuinely change the decision.
+Each time you are woken you will get your current state, the market data, your recent decisions and your lessons learned. Think it through, then call the submit_decision tool exactly once with your decision. If you have web search available, use it when news could change the decision. It costs a cent or two each time.
 
 Actions:
-- buy: open a position. Give position_pct (percent of equity to put in) and stop_price.
-- sell: close the whole position.
-- raise_stop: keep the position but move the stop up to stop_price.
+- buy: open a position, or add to the one you hold if adding is allowed. Give position_pct (percent of equity to spend on this buy) and stop_price (for the whole position).
+- sell: sell sell_pct percent of the position (100 to exit completely).
+- set_stop: keep the position and move the stop to stop_price.
 - hold: do nothing.
 
-Set next_check_hours to when you next want to look if nothing else happens (between 2 and 48). Checking less often saves money."""
+Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). You are also woken automatically on big moves, trend signals and when price nears your stop."""
+
+PATIENT_STYLE = """Your owner wants you to stay alive first and grow second, and to get better over time. Trade like a disciplined professional:
+- Capital preservation beats activity. Holding cash is a position. Most of the time the right answer is to do nothing.
+- Only take trades with a clear edge and at least 2 to 1 reward to risk. Know where you are wrong before you enter.
+- Trade with the dominant trend and the wider market (BTC, sentiment, news).
+- Fees, slippage and your own thinking costs eat small gains. Avoid churn.
+- Protect winners by raising the stop. Never hope a loser comes back.
+- Be honest in your journal, so you can learn from it later."""
+
+AGGRESSIVE_STYLE = """Your owner wants you to be aggressive. Growth is the goal and sitting in cash waiting for perfection is not. The guardrails are deliberately loose: only the survival floor and your thinking budget really hold you back. Trade like a bold, skilled discretionary trader:
+- Hunt for opportunities. Momentum, breakouts, range trades, dip buys and short swings on the 1h and 4h charts are all fair game. A decent edge is enough, you don't need a perfect setup.
+- Size up when you have conviction. Add to winners while the move is working. Take partial profits into strength and let the rest run.
+- Cut losers fast and re-enter when the setup returns. Being wrong small is fine, being frozen is not.
+- Still respect the maths: fees and slippage are about 0.3% per round trip and every check costs you, so a trade needs room to move.
+- Remember that dying ends everything. Aggressive does not mean reckless near the floor: as your health drops, size down.
+- Be honest in your journal about what you expected and why, so your weekly review can sharpen you."""
 
 REVIEW_PROMPT = """You are the trading mind of Survival Bot doing your weekly self review. You pay for every thought out of your own small balance, and you die if equity falls below the survival floor, so the point of this review is to make your future decisions better and cheaper.
 
@@ -78,15 +84,16 @@ DECISION_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["buy", "sell", "raise_stop", "hold"]},
-            "position_pct": {"type": ["number", "null"], "description": "For buy: percent of equity to put into the position."},
-            "stop_price": {"type": ["number", "null"], "description": "For buy or raise_stop: the stop price in USDT."},
+            "action": {"type": "string", "enum": ["buy", "sell", "set_stop", "hold"]},
+            "position_pct": {"type": ["number", "null"], "description": "For buy: percent of equity to spend on this buy."},
+            "sell_pct": {"type": ["number", "null"], "description": "For sell: percent of the position to sell, 100 to exit completely."},
+            "stop_price": {"type": ["number", "null"], "description": "For buy or set_stop: the stop price in USDT for the whole position."},
             "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
             "reasoning": {"type": "string", "description": "Plain English explanation for your owner, 2 to 5 sentences."},
             "journal": {"type": "string", "description": "A short note to your future self: what you expect to happen and what would prove you wrong."},
-            "next_check_hours": {"type": "number", "description": "When to check in next if nothing else happens, 2 to 48."},
+            "next_check_hours": {"type": "number", "description": "When to check in next if nothing else happens, in hours (max 48)."},
         },
-        "required": ["action", "position_pct", "stop_price", "confidence", "reasoning", "journal", "next_check_hours"],
+        "required": ["action", "position_pct", "sell_pct", "stop_price", "confidence", "reasoning", "journal", "next_check_hours"],
         "additionalProperties": False,
     },
 }
@@ -105,6 +112,21 @@ REVIEW_TOOL = {
         "additionalProperties": False,
     },
 }
+
+
+def rules_text(g, floor: float) -> str:
+    rules = [
+        f"- Every buy needs a stop between {g.min_stop_distance_pct:g}% and {g.max_stop_distance_pct:g}% below the current price.",
+        f"- Buys are trimmed so that hitting the stop loses at most {g.max_risk_per_trade * 100:g}% of equity across the whole position.",
+        f"- At most {g.max_trades_per_day} trades per day." if g.max_trades_per_day else "- No limit on trades per day.",
+        "- You can add to a position you already hold." if g.allow_adding else "- No adding to an open position.",
+        "- Stops can only move up." if g.stops_only_up else "- You can move your stop up or down.",
+        "- A coded stop sells automatically within a minute if price touches it, even while you sleep.",
+        (f"- If you lose {g.daily_loss_limit_pct:g}% in a UTC day, everything is sold and you sit out until tomorrow."
+         if g.daily_loss_limit_pct else "- No daily loss limit."),
+        f"- Below {floor:.0f} USDT equity you die.",
+    ]
+    return "\n".join(rules)
 
 
 def usage_cost(usage, model: str) -> float:
@@ -290,10 +312,10 @@ class ClaudeBrain:
         tools = [DECISION_TOOL]
         if tier["searches"]:
             tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": tier["searches"]})
-        g, sv = self.s.guardrails, self.s.survival
+        g = eng.g
         system = SYSTEM_PROMPT.format(
-            min_stop=g.min_stop_distance_pct, max_stop=g.max_stop_distance_pct, max_risk=round(g.max_risk_per_trade * 100, 1),
-            max_trades=g.max_trades_per_day, daily_loss=sv.daily_loss_limit_pct)
+            style=AGGRESSIVE_STYLE if g.style == "full send" else PATIENT_STYLE,
+            rules=rules_text(g, self.s.survival.floor_usd), min_check=f"{self.c.min_check_hours:g}")
         user = self.build_context(eng, candles, price, now, tier, reason)
         content, cost, answered_by = self._call(key, model, system, user, tools)
         eng.charge(now, "ai_cost", cost, f"{answered_by}: {reason}")
@@ -305,7 +327,7 @@ class ClaudeBrain:
             return None
         d = call.input if isinstance(call.input, dict) else json.loads(call.input)
         action = d.get("action", "hold")
-        hours = min(max(float(d.get("next_check_hours") or self.c.heartbeat_hours), 2), 48)
+        hours = min(max(float(d.get("next_check_hours") or self.c.heartbeat_hours), self.c.min_check_hours), 48)
         eng.store.set("claude_next_check_ts", now + int(hours * 3600))
         eng.store.add_decision(now, "decision", answered_by, reason, action, d.get("confidence"),
                                d.get("reasoning", ""), d.get("journal"), cost, price)
@@ -313,13 +335,15 @@ class ClaudeBrain:
                       f"Decision: {action.upper().replace('_', ' ')}. {d.get('reasoning', '')}", level="thought", ts=now)
 
         stop = d.get("stop_price")
+        why = f"Claude: {d.get('reasoning', '')}"
         if action == "buy":
             pct = d.get("position_pct") or 0
-            return Decision("buy", f"Claude: {d.get('reasoning', '')}", stop, size_usd=eng.equity(price) * pct / 100)
+            return Decision("buy", why, stop, size_usd=eng.equity(price) * pct / 100)
         if action == "sell":
-            return Decision("sell", f"Claude: {d.get('reasoning', '')}")
-        if action == "raise_stop" and stop:
-            return Decision("hold", "Claude raised the stop", stop)
+            frac = (d.get("sell_pct") or 100) / 100
+            return Decision("sell", why, sell_fraction=min(max(frac, 0.0), 1.0))
+        if action in ("set_stop", "raise_stop") and stop:
+            return Decision("hold", "Claude moved the stop", stop)
         return None
 
     # What Claude sees
@@ -344,7 +368,8 @@ class ClaudeBrain:
         if start_price:
             lines.append(f"- Since you were born ETH is {(price / start_price - 1) * 100:+.1f}% and you are "
                          f"{(equity / s.bot.starting_balance - 1) * 100:+.1f}%.")
-        lines.append(f"- Trades today: {eng.trades_today(now)} of {s.guardrails.max_trades_per_day} allowed.\n")
+        limit = eng.g.max_trades_per_day
+        lines.append(f"- Trades today: {eng.trades_today(now)}" + (f" of {limit} allowed.\n" if limit else " (no limit).\n"))
 
         lines.append("## Market")
         lines.append(self._market_block(eng, candles, price))
@@ -389,7 +414,7 @@ class ClaudeBrain:
             out.append("Last 30 4h candles (UTC open time, open, high, low, close):")
             for c in candles[-30:]:
                 out.append(f"{datetime.fromtimestamp(c.ts, timezone.utc).strftime('%d %b %H:%M')} {c.open:.2f} {c.high:.2f} {c.low:.2f} {c.close:.2f}")
-        for label, fn in (("daily", self._daily), ("btc", self._btc), ("sentiment", self._sentiment)):
+        for label, fn in (("hourly", self._hourly), ("daily", self._daily), ("btc", self._btc), ("sentiment", self._sentiment)):
             try:
                 text = fn(m)
                 if text:
@@ -397,6 +422,14 @@ class ClaudeBrain:
             except Exception:
                 pass
         return "\n".join(out) + "\n"
+
+    def _hourly(self, m) -> str:
+        hourly = m.candles(60)
+        closes = [c.close for c in hourly]
+        r = rsi(closes)[-1]
+        f = ema(closes, 20)[-1]
+        rows = " | ".join(f"{datetime.fromtimestamp(c.ts, timezone.utc).strftime('%H:%M')} {c.low:.0f}-{c.high:.0f} close {c.close:.0f}" for c in hourly[-24:])
+        return f"1h chart: 20 EMA {f:,.2f}, RSI {r:.0f}. Last 24 hours (UTC open time, low-high, close): {rows}"
 
     def _daily(self, m) -> str:
         daily = m.candles(1440)
@@ -476,6 +509,7 @@ class ClaudeBrain:
         last = eng.store.decisions(1, kind="decision")
         return {"brain": {
             "key_set": bool(self.api_key(eng)),
+            "style": eng.g.style,
             "key_from_env": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "tier": tier["name"] if tier else None,
             "model": tier["model"] if tier else None,

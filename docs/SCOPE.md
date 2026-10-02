@@ -57,13 +57,20 @@ Health is how far equity sits between the $50 floor (0%) and the $100 start (100
 
 **How it learns.** Every decision is stored with its reasoning and a note to its future self. Once a week it reviews its decisions, its trades, and how it went against the maths bot and buy and hold, then rewrites a short "lessons learned" note that it reads before every decision.
 
-**What it can't override.** Code enforces these for every decision:
+**What it can't override.** Each bot has its own rulebook in `config.toml`, enforced in code. You chose "full send" for Claude, so its rules are deliberately loose. The maths bot stays careful, which makes the race a bold trader against a disciplined formula.
 
-- a stop 1% to 15% below price on every buy
-- at most 3% of equity lost if a stop is hit
-- 4 trades a day at most, and no adding to a position
-- stops only move up
-- the 5% daily loss limit and the $50 floor
+| Rule | Claude (full send) | Maths bot (careful) |
+|---|---|---|
+| Stop required on every buy | yes, 0.5% to 50% below price | yes, 1% to 15% below price |
+| Max loss if the stop is hit | 25% of equity | 3% of equity (uses 2%) |
+| Trades per day | no limit | 4 |
+| Daily loss limit | none | 5%, then sits out until tomorrow |
+| Add to a position | yes | no |
+| Partial sells | yes | no |
+| Move the stop | up or down | up only |
+| $50 survival floor | yes | yes |
+
+Claude's trading personality follows its rulebook: with "full send" it is told to hunt for trades, size up with conviction, add to winners and take partial profits, while sizing down as its health drops. It also wakes on 2% moves (not 3%), can check in as often as hourly, and sees the 1 hour chart. Its $15 monthly thinking cap is unchanged, so busier months push it onto the cheaper model sooner.
 
 ## Stages
 

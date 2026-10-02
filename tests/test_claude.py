@@ -40,8 +40,8 @@ class FakeClaude:
         return reply
 
 
-def decision(action="hold", pct=None, stop=None, hours=24, confidence="medium"):
-    return {"action": action, "position_pct": pct, "stop_price": stop, "confidence": confidence,
+def decision(action="hold", pct=None, stop=None, hours=24, confidence="medium", sell_pct=None):
+    return {"action": action, "position_pct": pct, "sell_pct": sell_pct, "stop_price": stop, "confidence": confidence,
             "reasoning": f"Test reasoning for {action}.", "journal": "Expect X.", "next_check_hours": hours}
 
 
@@ -53,13 +53,19 @@ class MarketPlus(FakeMarket):
         return (50, "Neutral")
 
 
-def make(replies, closes=None, price=None, key="sk-ant-test"):
+def full_send():
+    from bot.config import GuardrailSettings
+    return GuardrailSettings(style="full send", max_risk_per_trade=0.25, min_stop_distance_pct=0.5, max_stop_distance_pct=50,
+                             max_trades_per_day=0, daily_loss_limit_pct=0, allow_adding=True, stops_only_up=False)
+
+
+def make(replies, closes=None, price=None, key="sk-ant-test", guardrails=None):
     s = settings()
     clock = Clock()
     fake = FakeClaude(replies)
     brain = ClaudeBrain(s, client_factory=lambda k: fake, clock=clock)
     market = MarketPlus(closes or [100.0] * 80, price)
-    eng = Engine(s, market, Store(":memory:"), clock=clock, brain=brain)
+    eng = Engine(s, market, Store(":memory:"), clock=clock, brain=brain, guardrails=guardrails)
     if key:
         eng.store.set("anthropic_api_key", key)
     return eng, fake, market, clock
@@ -117,8 +123,8 @@ def test_buy_without_valid_stop_is_rejected():
 def test_stop_can_only_move_up():
     eng, fake, market, clock = make([
         tool_reply("submit_decision", decision("buy", pct=50, stop=95)),
-        tool_reply("submit_decision", decision("raise_stop", stop=90)),
-        tool_reply("submit_decision", decision("raise_stop", stop=97)),
+        tool_reply("submit_decision", decision("set_stop", stop=90)),
+        tool_reply("submit_decision", decision("set_stop", stop=97)),
     ])
     eng.tick()
     for _ in range(2):
@@ -236,3 +242,82 @@ def test_key_endpoint_rejects_junk(monkeypatch):
     assert client.post("/api/claude/key", json={"key": "hello"}).status_code == 400
     monkeypatch.setattr("bot.web.check_key", lambda k: (True, "ok"))
     assert client.post("/api/claude/key", json={"key": "sk-ant-abc"}).json()["brain"]["key_set"]
+
+
+# Full send mode
+
+def wake_again(eng, clock):
+    clock.t += 2 * H
+    eng.store.set("claude_next_check_ts", clock.t - 1)
+    eng.tick()
+
+
+def test_full_send_prompt_matches_rules():
+    eng, fake, *_ = make([tool_reply("submit_decision", decision("hold"))], guardrails=full_send())
+    eng.tick()
+    system = fake.requests[0]["system"]
+    assert "aggressive" in system
+    assert "No limit on trades per day." in system
+    assert "No daily loss limit." in system
+    assert "up or down" in system
+    assert "25% of equity" in system
+
+
+def test_careful_prompt_for_careful_rules():
+    eng, fake, *_ = make([tool_reply("submit_decision", decision("hold"))])
+    eng.tick()
+    assert "Capital preservation" in fake.requests[0]["system"]
+    assert "Stops can only move up." in fake.requests[0]["system"]
+
+
+def test_full_send_big_size_add_partial_sell_and_lower_stop():
+    eng, fake, market, clock = make([
+        tool_reply("submit_decision", decision("buy", pct=50, stop=90)),   # 50% with a 10% stop risks 5%: allowed
+        tool_reply("submit_decision", decision("buy", pct=30, stop=92)),   # add to it
+        tool_reply("submit_decision", decision("set_stop", stop=85)),      # lowering is allowed
+        tool_reply("submit_decision", decision("sell", sell_pct=50)),      # take half off
+    ], guardrails=full_send())
+    eng.tick()
+    first = eng.store.trades()[0]
+    assert first["notional"] == pytest.approx(50, rel=0.02)
+    wake_again(eng, clock)
+    assert len(eng.store.trades()) == 2 and eng.store.get("stop") == 92
+    held = eng.qty
+    wake_again(eng, clock)
+    assert eng.store.get("stop") == 85
+    wake_again(eng, clock)
+    assert eng.qty == pytest.approx(held / 2)
+    last = eng.store.trades()[0]
+    assert last["side"] == "sell" and last["pnl"] is not None
+    assert eng.store.get("cost_basis") > 0
+
+
+def test_full_send_has_no_daily_loss_limit_or_trade_cap():
+    eng, fake, market, clock = make([tool_reply("submit_decision", decision("buy", pct=90, stop=60))], guardrails=full_send())
+    eng.tick()
+    market.set(price=80)  # down about 18% in a day, still above the stop and floor
+    clock.t += 60
+    eng.tick()
+    assert eng.status == "running" and eng.qty > 0
+    assert eng.g.max_trades_per_day == 0
+
+
+def test_floor_still_kills_full_send():
+    eng, fake, market, clock = make([tool_reply("submit_decision", decision("buy", pct=50, stop=60))], guardrails=full_send())
+    eng.tick()
+    # Earlier losses have left it with little cash; this drop takes equity under the floor
+    eng.store.set("cash", 20.0)
+    market.set(price=59)  # equity 20 + 0.5 x 59 = 49.5, under the floor
+    clock.t += 60
+    eng.tick()
+    assert eng.status == "dead" and eng.qty == 0
+
+
+def test_risk_cap_limits_full_send_losses():
+    eng, fake, market, clock = make([tool_reply("submit_decision", decision("buy", pct=95, stop=50))], guardrails=full_send())
+    eng.tick()
+    market.set(price=45)  # gaps straight through the stop
+    clock.t += 60
+    eng.tick()
+    assert eng.status == "running" and eng.qty == 0
+    assert 65 < eng.equity(45) < 80  # roughly the 25% risk cap, plus a little gap slippage

@@ -45,8 +45,9 @@ class MathsBrain:
 
 
 class Engine:
-    def __init__(self, settings: Settings, market, store: Store, broker=None, clock=time.time, brain=None):
+    def __init__(self, settings: Settings, market, store: Store, broker=None, clock=time.time, brain=None, guardrails=None):
         self.s = settings
+        self.g = guardrails or settings.guardrails
         self.market = market
         self.store = store
         self.broker = broker or PaperBroker(settings.costs)
@@ -130,8 +131,8 @@ class Engine:
             return
 
         day_start = self.store.get("day_start_equity")
-        limit = self.s.survival.daily_loss_limit_pct / 100
-        if self.status == RUNNING and equity <= day_start * (1 - limit):
+        limit = self.g.daily_loss_limit_pct / 100
+        if limit > 0 and self.status == RUNNING and equity <= day_start * (1 - limit):
             self._close(price, now, f"Down {(1 - equity / day_start) * 100:.1f}% today. Daily loss limit hit.")
             self.store.set("status", PAUSED)
             self.store.log("Sitting out for the rest of the UTC day.", level="warning", ts=now)
@@ -151,40 +152,49 @@ class Engine:
 
     # Guardrails: every brain's decision goes through here
     def apply(self, d: Decision, price: float, now: int) -> None:
-        g = self.s.guardrails
+        g = self.g
         stop = self.store.get("stop")
         if d.action == "buy":
-            if self.qty > 0:
+            if self.qty > 0 and not g.allow_adding:
                 self.store.log(f"Guardrail: already holding, not adding to the position. {d.reason}", ts=now)
                 return
-            if self.trades_today(now) >= g.max_trades_per_day:
+            if g.max_trades_per_day and self.trades_today(now) >= g.max_trades_per_day:
                 self.store.log(f"Guardrail: already made {g.max_trades_per_day} trades today, skipping the buy.", level="warning", ts=now)
                 return
             if d.stop is None or not (price * (1 - g.max_stop_distance_pct / 100) <= d.stop <= price * (1 - g.min_stop_distance_pct / 100)):
                 self.store.log(f"Guardrail: buy rejected, the stop must sit {g.min_stop_distance_pct}% to "
                                f"{g.max_stop_distance_pct}% below price (got {d.stop}).", level="warning", ts=now)
                 return
+            new_stop = d.stop
+            if self.qty > 0 and stop is not None and g.stops_only_up:
+                new_stop = max(stop, d.stop)
             equity = self.equity(price)
             gas = self.s.costs.gas_per_swap_usd
             if d.size_usd is None:
-                notional = position_size(equity, self.cash, price, d.stop, self.s.strategy, gas)
+                notional = position_size(equity, self.cash, price, new_stop, self.s.strategy, gas)
             else:
-                risk_cap = equity * g.max_risk_per_trade / ((price - d.stop) / price)
+                # Risk is what the whole position would lose if the stop is hit
+                held_risk = self.qty * max(price - new_stop, 0)
+                risk_room = max(equity * g.max_risk_per_trade - held_risk, 0)
+                risk_cap = risk_room / ((price - new_stop) / price)
                 notional = min(d.size_usd, risk_cap, self.cash * self.s.strategy.max_position_pct - gas)
                 if notional < d.size_usd - 0.01:
-                    self.store.log(f"Guardrail: trade trimmed from {d.size_usd:.2f} to {notional:.2f} USDT "
-                                   f"to keep the risk under {g.max_risk_per_trade:.0%} of equity.", ts=now)
+                    self.store.log(f"Guardrail: trade trimmed from {d.size_usd:.2f} to {max(notional, 0):.2f} USDT "
+                                   f"to keep the risk under {g.max_risk_per_trade:.0%} of equity and within available cash.", ts=now)
                 if notional < self.s.strategy.min_trade_usd:
                     notional = 0.0
-            if notional == 0:
+            if notional <= 0:
                 self.store.log(f"{d.reason} But the trade would be too small, so skipping.", ts=now)
                 return
-            self._open(notional, price, d.stop, now, d.reason)
+            self._open(notional, price, new_stop, now, d.reason)
         elif d.action == "sell":
             if self.qty > 0:
-                self._close(price, now, d.reason)
+                if g.max_trades_per_day and self.trades_today(now) >= g.max_trades_per_day and d.sell_fraction < 1:
+                    self.store.log("Guardrail: trade limit reached, a partial sell isn't allowed. Full exits always are.", level="warning", ts=now)
+                    return
+                self._close(price, now, d.reason, d.sell_fraction)
         elif d.stop is not None and self.qty > 0:
-            if stop is not None and d.stop < stop:
+            if g.stops_only_up and stop is not None and d.stop < stop:
                 self.store.log(f"Guardrail: stops only move up, keeping {stop:,.2f}.", ts=now)
             elif d.stop >= price:
                 self.store.log(f"Guardrail: stop {d.stop:,.2f} would be above the price, ignored.", level="warning", ts=now)
@@ -214,25 +224,38 @@ class Engine:
     # Trading
     def _open(self, notional: float, price: float, stop: float, now: int, reason: str) -> None:
         fill = self.broker.buy(notional, price)
+        adding = self.qty > 0
         self.store.set("cash", self.cash + fill.cash_delta)
         self.store.set("qty", self.qty + fill.qty)
-        self.store.set("cost_basis", -fill.cash_delta)
+        self.store.set("cost_basis", (self.store.get("cost_basis") if adding else 0.0) - fill.cash_delta)
         self.store.set("stop", stop)
         self.store.add_trade(now, fill, None, self.market.usd_to_aud(), reason)
-        self.store.log(f"BUY {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f} "
+        self.store.log(f"{'ADD' if adding else 'BUY'} {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f} "
                        f"({fill.notional:.2f} USDT, fees {fill.fee + fill.gas:.2f}). {reason}", level="trade", ts=now)
 
-    def _close(self, price: float, now: int, reason: str) -> None:
+    def _close(self, price: float, now: int, reason: str, fraction: float = 1.0) -> None:
         if self.qty <= 0:
             return
-        fill = self.broker.sell(self.qty, price)
-        pnl = fill.cash_delta - self.store.get("cost_basis")
+        fraction = min(max(fraction, 0.0), 1.0)
+        if fraction < 1 and self.qty * (1 - fraction) * price < self.s.strategy.min_trade_usd:
+            fraction = 1.0  # don't leave a dust position behind
+        if fraction <= 0:
+            return
+        qty = self.qty * fraction
+        basis = self.store.get("cost_basis") * fraction
+        fill = self.broker.sell(qty, price)
+        pnl = fill.cash_delta - basis
         self.store.set("cash", self.cash + fill.cash_delta)
-        self.store.set("qty", 0.0)
-        self.store.set("cost_basis", 0.0)
-        self.store.set("stop", None)
+        if fraction >= 1:
+            self.store.set("qty", 0.0)
+            self.store.set("cost_basis", 0.0)
+            self.store.set("stop", None)
+        else:
+            self.store.set("qty", self.qty - qty)
+            self.store.set("cost_basis", self.store.get("cost_basis") - basis)
         self.store.add_trade(now, fill, pnl, self.market.usd_to_aud(), reason)
-        self.store.log(f"SELL {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f}. "
+        label = "SELL" if fraction >= 1 else f"SELL {fraction:.0%} of position:"
+        self.store.log(f"{label} {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f}. "
                        f"{'Profit' if pnl >= 0 else 'Loss'} {pnl:+.2f} USDT. {reason}", level="trade", ts=now)
 
     # Controls from the dashboard
@@ -302,7 +325,8 @@ class Engine:
             },
             "started_at": self.store.get("started_at"),
             "day_start_equity": self.store.get("day_start_equity"),
-            "daily_loss_limit_pct": self.s.survival.daily_loss_limit_pct,
+            "daily_loss_limit_pct": self.g.daily_loss_limit_pct,
+            "style": self.g.style,
             "last_error": self.last_error,
             **self.brain.extra_summary(self),
         }

@@ -222,6 +222,8 @@ def test_backtest_needs_enough_data():
 def test_repo_config_loads():
     s = load_settings("config.toml")
     assert s.bot.mode == "paper" and s.bot.starting_balance == 100
+    assert s.guardrails.style == "careful" and s.guardrails.daily_loss_limit_pct == 5
+    assert s.claude_guardrails.style == "full send" and s.claude_guardrails.max_trades_per_day == 0
 
 
 def test_config_rejects_live_mode(tmp_path):
