@@ -271,6 +271,13 @@ class Engine:
 
         Equity is the bot's bankroll plus whatever the exchange account has gained or lost
         since the bot went live, minus the hosting and thinking it owes."""
+        if not getattr(self, "_leverage_set", False):
+            self._leverage_set = True
+            try:
+                self.broker.venue.set_leverage(1)
+                self.store.log("Set the exchange's leverage for ETH to 1x, so it will refuse anything bigger.", ts=now)
+            except Exception as exc:
+                self.store.log(f"Couldn't set the exchange's leverage to 1x ({exc}). The bot's own 1x limit still applies.", level="warning", ts=now)
         st = self.broker.venue.state()
         if abs(st.qty) * price < 1.0:  # rounding dust left after a close
             st.qty, st.entry_price = 0.0, None

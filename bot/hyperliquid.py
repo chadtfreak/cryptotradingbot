@@ -144,6 +144,14 @@ class HyperliquidVenue:
             raise VenueError(f"Market order didn't fill: {status}")
         return float(filled["totalSz"]), float(filled["avgPx"])
 
+    def set_leverage(self, leverage: int = 1) -> None:
+        """Sets the exchange's own leverage cap, so it refuses anything above it too."""
+        self._check_action(self.exchange.update_leverage(leverage, self.coin, True), "Setting leverage")
+
+    def _check_action(self, resp, what: str) -> None:
+        if not isinstance(resp, dict) or resp.get("status") != "ok":
+            raise VenueError(f"{what} failed: {resp}")
+
     def cancel_stops(self) -> None:
         for o in self.stop_orders():
             self.exchange.cancel(self.coin, o["oid"])

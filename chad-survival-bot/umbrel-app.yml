@@ -4,7 +4,7 @@ name: Survival Bot
 tagline: Claude trades crypto and has to pay for its own thinking
 icon: https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/bot/static/icon.svg
 category: finance
-version: "1.4.2"
+version: "1.4.3"
 port: 8766
 description: >-
   Claude trades ETH, long or short, with its own small account. Every time it thinks, the
@@ -25,8 +25,9 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Supports Hyperliquid's unified accounts (the default for new accounts),
-  where Spot USDC backs perp trades and no transfer is needed.
+  On Hyperliquid, the bot now sets the exchange's own ETH leverage to 1x when
+  it connects, so the exchange refuses anything bigger as well as the bot.
+  Unified account balances confirmed against a real testnet account.
 dependencies: []
 path: ""
 defaultUsername: ""

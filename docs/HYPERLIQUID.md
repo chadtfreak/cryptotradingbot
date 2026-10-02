@@ -56,7 +56,7 @@ This API wallet can place trades for your account but **can never withdraw**. If
 ## 6. Switch Claude over
 
 1. Open the Survival Bot dashboard on the **Claude** tab.
-2. If Claude has an open position, press the **Kill switch** first.
+2. If Claude has an open position, press the **Kill switch** first. Also close any trades you opened by hand on the testnet site: the bot treats the whole account as Claude's, so it would adopt them.
 3. Under **Where Claude trades**, click **Change**, then pick **Hyperliquid testnet**.
 4. Paste your **main wallet address** (starts with 0x, 42 characters, from Rabby or MetaMask). This is public and safe to share.
 5. Paste the **API wallet private key** from step 5.

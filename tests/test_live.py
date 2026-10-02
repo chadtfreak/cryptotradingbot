@@ -50,6 +50,11 @@ class FakeVenue:
         self.balance -= qty * self.px * 0.00045
         return qty, self.px
 
+    leverage = 20
+
+    def set_leverage(self, leverage=1):
+        self.leverage = leverage
+
     def cancel_stops(self):
         self.stops = []
 
@@ -235,3 +240,10 @@ def test_standard_account_reads_perps_value():
     from bot.hyperliquid import account_state
     info = FakeInfo("default", 250.0, 999.0)
     assert account_state(info, "0xabc").account_value == 250.0
+
+
+def test_sets_exchange_leverage_to_1x_on_connect():
+    eng, venue, clock = make_live([tool_reply("submit_decision", decision("hold"))])
+    eng.tick()
+    assert venue.leverage == 1
+    assert any("leverage for ETH to 1x" in e["message"] for e in eng.store.events())
