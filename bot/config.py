@@ -54,6 +54,8 @@ class GuardrailSettings:
     max_trades_per_day: int = 4  # 0 means no limit
     daily_loss_limit_pct: float = 5.0  # 0 means no daily limit
     allow_adding: bool = False  # buy more while already holding
+    allow_short: bool = False
+    max_leverage: float = 1.0  # total exposure as a multiple of equity
     stops_only_up: bool = True
 
 

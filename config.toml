@@ -19,10 +19,11 @@ max_position_pct = 0.95     # never put more than 95% of cash into one trade
 min_trade_usd = 10.0
 
 [costs]
-# Modelled on a Uniswap v3 swap on Arbitrum
-pool_fee_pct = 0.05
-slippage_pct = 0.10
-gas_per_swap_usd = 0.05
+# Modelled on Hyperliquid's ETH perpetual (taker fee, small slippage, no gas).
+# Both bots pay hourly funding at Hyperliquid's live rate while holding a position.
+pool_fee_pct = 0.045
+slippage_pct = 0.02
+gas_per_swap_usd = 0.0
 
 [survival]
 monthly_running_cost_usd = 1.0   # Umbrel power share. The bot pays this out of its own balance.
@@ -38,6 +39,8 @@ max_trades_per_day = 4
 daily_loss_limit_pct = 5.0       # lose this much in a UTC day and it sits out until tomorrow
 allow_adding = false
 stops_only_up = true
+allow_short = false
+max_leverage = 1.0
 
 [claude_guardrails]
 # Claude's hard limits: "full send". Only the $50 survival floor and the thinking budget really hold it back.
@@ -49,6 +52,8 @@ max_trades_per_day = 0           # no limit
 daily_loss_limit_pct = 0         # no daily loss limit
 allow_adding = true              # can add to a position it already holds
 stops_only_up = false            # can move its stop up or down
+allow_short = true               # can bet on ETH falling
+max_leverage = 1.0               # never more exposure than its equity. Hard-coded safety, keep at 1.
 
 [claude]
 enabled = true

@@ -50,6 +50,11 @@ class FakeMarket:
     def usd_to_aud(self):
         return 1.5
 
+    funding = 0.0
+
+    def funding_rate(self):
+        return self.funding
+
 
 class Clock:
     def __init__(self, t=1_800_000_000):

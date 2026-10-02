@@ -70,7 +70,7 @@ class Engine:
         }.items():
             self.store.set(key, value)
         self.store.add_ledger(now, "deposit", bal, "Starting balance (paper)")
-        self.store.log(f"Born with {bal:.2f} USDT in paper mode. Hosting costs "
+        self.store.log(f"Born with {bal:.2f} USDC in paper mode. Hosting costs "
                        f"{self.s.survival.monthly_running_cost_usd:.2f} USD a month, paid from my own balance.", ts=now)
 
     # Account helpers
@@ -118,6 +118,7 @@ class Engine:
             return
 
         self._pay_running_costs(now)
+        self._pay_funding(now, price)
         equity = self.equity(price)
         self._roll_day(now, equity)
         self.store.add_equity(now - now % EQUITY_BUCKET, equity, self.cash, self.qty, price)
@@ -142,8 +143,9 @@ class Engine:
             return
 
         stop = self.store.get("stop")
-        if self.qty > 0 and stop_hit(price, stop):
-            self._close(price, now, f"Stop hit: price {price:,.2f} fell to or below stop {stop:,.2f}.")
+        if self.qty != 0 and stop_hit(price, stop, self.qty):
+            moved = "fell to or below" if self.qty > 0 else "rose to or above"
+            self._close(price, now, f"Stop hit: price {price:,.2f} {moved} stop {stop:,.2f}.")
 
         candles = self.market.candles(self.s.bot.interval_minutes)
         decision = self.brain.decide(self, candles, price, now)
@@ -152,54 +154,78 @@ class Engine:
 
     # Guardrails: every brain's decision goes through here
     def apply(self, d: Decision, price: float, now: int) -> None:
-        g = self.g
-        stop = self.store.get("stop")
-        if d.action == "buy":
-            if self.qty > 0 and not g.allow_adding:
-                self.store.log(f"Guardrail: already holding, not adding to the position. {d.reason}", ts=now)
-                return
-            if g.max_trades_per_day and self.trades_today(now) >= g.max_trades_per_day:
-                self.store.log(f"Guardrail: already made {g.max_trades_per_day} trades today, skipping the buy.", level="warning", ts=now)
-                return
-            if d.stop is None or not (price * (1 - g.max_stop_distance_pct / 100) <= d.stop <= price * (1 - g.min_stop_distance_pct / 100)):
-                self.store.log(f"Guardrail: buy rejected, the stop must sit {g.min_stop_distance_pct}% to "
-                               f"{g.max_stop_distance_pct}% below price (got {d.stop}).", level="warning", ts=now)
-                return
-            new_stop = d.stop
-            if self.qty > 0 and stop is not None and g.stops_only_up:
-                new_stop = max(stop, d.stop)
-            equity = self.equity(price)
-            gas = self.s.costs.gas_per_swap_usd
-            if d.size_usd is None:
-                notional = position_size(equity, self.cash, price, new_stop, self.s.strategy, gas)
-            else:
-                # Risk is what the whole position would lose if the stop is hit
-                held_risk = self.qty * max(price - new_stop, 0)
-                risk_room = max(equity * g.max_risk_per_trade - held_risk, 0)
-                risk_cap = risk_room / ((price - new_stop) / price)
-                notional = min(d.size_usd, risk_cap, self.cash * self.s.strategy.max_position_pct - gas)
-                if notional < d.size_usd - 0.01:
-                    self.store.log(f"Guardrail: trade trimmed from {d.size_usd:.2f} to {max(notional, 0):.2f} USDT "
-                                   f"to keep the risk under {g.max_risk_per_trade:.0%} of equity and within available cash.", ts=now)
-                if notional < self.s.strategy.min_trade_usd:
-                    notional = 0.0
-            if notional <= 0:
-                self.store.log(f"{d.reason} But the trade would be too small, so skipping.", ts=now)
-                return
-            self._open(notional, price, new_stop, now, d.reason)
+        if d.action in ("buy", "short"):
+            self._apply_open(d, price, now)
         elif d.action == "sell":
-            if self.qty > 0:
+            if self.qty != 0:
+                g = self.g
                 if g.max_trades_per_day and self.trades_today(now) >= g.max_trades_per_day and d.sell_fraction < 1:
-                    self.store.log("Guardrail: trade limit reached, a partial sell isn't allowed. Full exits always are.", level="warning", ts=now)
+                    self.store.log("Guardrail: trade limit reached, a partial close isn't allowed. Full exits always are.", level="warning", ts=now)
                     return
                 self._close(price, now, d.reason, d.sell_fraction)
-        elif d.stop is not None and self.qty > 0:
-            if g.stops_only_up and stop is not None and d.stop < stop:
-                self.store.log(f"Guardrail: stops only move up, keeping {stop:,.2f}.", ts=now)
-            elif d.stop >= price:
-                self.store.log(f"Guardrail: stop {d.stop:,.2f} would be above the price, ignored.", level="warning", ts=now)
-            else:
-                self.store.set("stop", d.stop)
+        elif d.stop is not None and self.qty != 0:
+            self._move_stop(d.stop, price, now)
+
+    def _apply_open(self, d: Decision, price: float, now: int) -> None:
+        g = self.g
+        side = 1 if d.action == "buy" else -1
+        word = "buy" if side > 0 else "short"
+        if side < 0 and not g.allow_short:
+            self.store.log("Guardrail: this bot isn't allowed to short.", level="warning", ts=now)
+            return
+        if self.qty * side < 0:
+            self._close(price, now, f"Flipping from {'long' if self.qty > 0 else 'short'} to {'long' if side > 0 else 'short'}. {d.reason}")
+        elif self.qty != 0 and not g.allow_adding:
+            self.store.log(f"Guardrail: already in a position, not adding to it. {d.reason}", ts=now)
+            return
+        if g.max_trades_per_day and self.trades_today(now) >= g.max_trades_per_day:
+            self.store.log(f"Guardrail: already made {g.max_trades_per_day} trades today, skipping the {word}.", level="warning", ts=now)
+            return
+        lo, hi = g.min_stop_distance_pct / 100, g.max_stop_distance_pct / 100
+        ok = d.stop is not None and (price * (1 - hi) <= d.stop <= price * (1 - lo) if side > 0 else price * (1 + lo) <= d.stop <= price * (1 + hi))
+        if not ok:
+            where = "below" if side > 0 else "above"
+            self.store.log(f"Guardrail: {word} rejected, the stop must sit {g.min_stop_distance_pct:g}% to "
+                           f"{g.max_stop_distance_pct:g}% {where} price (got {d.stop}).", level="warning", ts=now)
+            return
+        stop = self.store.get("stop")
+        new_stop = d.stop
+        if self.qty != 0 and stop is not None and g.stops_only_up:  # adding: keep whichever stop is tighter
+            new_stop = max(stop, d.stop) if side > 0 else min(stop, d.stop)
+        equity = self.equity(price)
+        gas = self.s.costs.gas_per_swap_usd
+        distance = abs(price - new_stop) / price
+        if d.size_usd is None:
+            notional = position_size(equity, self.cash, price, new_stop, self.s.strategy, gas)
+        else:
+            # Risk is what the whole position would lose if the stop is hit
+            held_risk = abs(self.qty) * abs(price - new_stop)
+            risk_cap = max(equity * g.max_risk_per_trade - held_risk, 0) / distance
+            # No leverage: total exposure can't exceed equity
+            room = equity * g.max_leverage * self.s.strategy.max_position_pct - abs(self.qty) * price - gas
+            if side > 0:
+                room = min(room, self.cash * self.s.strategy.max_position_pct - gas)
+            notional = min(d.size_usd, risk_cap, room)
+            if notional < d.size_usd - 0.01:
+                self.store.log(f"Guardrail: trade trimmed from {d.size_usd:.2f} to {max(notional, 0):.2f} USDC "
+                               f"to keep the risk under {g.max_risk_per_trade:.0%} of equity with no leverage.", ts=now)
+            if notional < self.s.strategy.min_trade_usd:
+                notional = 0.0
+        if notional <= 0:
+            self.store.log(f"{d.reason} But the trade would be too small, so skipping.", ts=now)
+            return
+        self._open(side, notional, price, new_stop, now, d.reason)
+
+    def _move_stop(self, new: float, price: float, now: int) -> None:
+        stop = self.store.get("stop")
+        long = self.qty > 0
+        loosening = stop is not None and (new < stop if long else new > stop)
+        if self.g.stops_only_up and loosening:
+            self.store.log(f"Guardrail: stops can only be tightened, keeping {stop:,.2f}.", ts=now)
+        elif (long and new >= price) or (not long and new <= price):
+            self.store.log(f"Guardrail: stop {new:,.2f} is on the wrong side of the price, ignored.", level="warning", ts=now)
+        else:
+            self.store.set("stop", new)
 
     # Survival bookkeeping
     def _pay_running_costs(self, now: int) -> None:
@@ -210,6 +236,22 @@ class Engine:
         cost = self.s.survival.daily_cost_usd * elapsed / 86400
         self.store.set("last_cost_ts", now)
         self.charge(now, "running_cost", cost, f"Hosting for {elapsed / 3600:.1f}h")
+
+    def _pay_funding(self, now: int, price: float) -> None:
+        """Perp funding, settled hourly: longs pay shorts when the rate is positive."""
+        last = self.store.get("last_funding_ts")
+        if self.qty == 0 or last is None:
+            self.store.set("last_funding_ts", now)
+            return
+        hours = (now - last) / 3600
+        if hours < 1:
+            return
+        rate = self.market.funding_rate()
+        self.store.set("last_funding_ts", now)
+        if rate is None:
+            return
+        amount = self.qty * price * rate * hours
+        self.charge(now, "funding", amount, f"Funding {rate * 100:.4f}%/h for {hours:.1f}h")
 
     def _roll_day(self, now: int, equity: float) -> None:
         today = utc_day(now)
@@ -222,28 +264,32 @@ class Engine:
             self.store.log("New day. Daily loss limit reset, back to trading.", ts=now)
 
     # Trading
-    def _open(self, notional: float, price: float, stop: float, now: int, reason: str) -> None:
-        fill = self.broker.buy(notional, price)
-        adding = self.qty > 0
+    def _open(self, side: int, notional: float, price: float, stop: float, now: int, reason: str) -> None:
+        # Shorts sell ETH we don't own (a 1x perp): cash goes up and qty goes negative, so
+        # equity = cash + qty * price holds for both sides.
+        fill = self.broker.buy(notional, price) if side > 0 else self.broker.sell(notional / price, price)
+        adding = self.qty != 0
         self.store.set("cash", self.cash + fill.cash_delta)
-        self.store.set("qty", self.qty + fill.qty)
+        self.store.set("qty", self.qty + side * fill.qty)
         self.store.set("cost_basis", (self.store.get("cost_basis") if adding else 0.0) - fill.cash_delta)
         self.store.set("stop", stop)
         self.store.add_trade(now, fill, None, self.market.usd_to_aud(), reason)
-        self.store.log(f"{'ADD' if adding else 'BUY'} {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f} "
-                       f"({fill.notional:.2f} USDT, fees {fill.fee + fill.gas:.2f}). {reason}", level="trade", ts=now)
+        label = ("ADD TO LONG" if adding else "BUY") if side > 0 else ("ADD TO SHORT" if adding else "SHORT")
+        self.store.log(f"{label} {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f} "
+                       f"({fill.notional:.2f} USDC, fees {fill.fee + fill.gas:.2f}), stop {stop:,.2f}. {reason}", level="trade", ts=now)
 
     def _close(self, price: float, now: int, reason: str, fraction: float = 1.0) -> None:
-        if self.qty <= 0:
+        if self.qty == 0:
             return
         fraction = min(max(fraction, 0.0), 1.0)
-        if fraction < 1 and self.qty * (1 - fraction) * price < self.s.strategy.min_trade_usd:
+        if fraction < 1 and abs(self.qty) * (1 - fraction) * price < self.s.strategy.min_trade_usd:
             fraction = 1.0  # don't leave a dust position behind
         if fraction <= 0:
             return
-        qty = self.qty * fraction
+        long = self.qty > 0
+        qty = abs(self.qty) * fraction
         basis = self.store.get("cost_basis") * fraction
-        fill = self.broker.sell(qty, price)
+        fill = self.broker.sell(qty, price) if long else self.broker.buy_qty(qty, price)
         pnl = fill.cash_delta - basis
         self.store.set("cash", self.cash + fill.cash_delta)
         if fraction >= 1:
@@ -251,12 +297,13 @@ class Engine:
             self.store.set("cost_basis", 0.0)
             self.store.set("stop", None)
         else:
-            self.store.set("qty", self.qty - qty)
+            self.store.set("qty", self.qty - qty if long else self.qty + qty)
             self.store.set("cost_basis", self.store.get("cost_basis") - basis)
         self.store.add_trade(now, fill, pnl, self.market.usd_to_aud(), reason)
-        label = "SELL" if fraction >= 1 else f"SELL {fraction:.0%} of position:"
+        what = "SELL" if long else "BUY BACK"
+        label = f"{what} {fraction:.0%} of position:" if fraction < 1 else ("SELL" if long else "CLOSE SHORT")
         self.store.log(f"{label} {fill.qty:.5f} {self.s.bot.asset} at {fill.price:,.2f}. "
-                       f"{'Profit' if pnl >= 0 else 'Loss'} {pnl:+.2f} USDT. {reason}", level="trade", ts=now)
+                       f"{'Profit' if pnl >= 0 else 'Loss'} {pnl:+.2f} USDC. {reason}", level="trade", ts=now)
 
     # Controls from the dashboard
     def kill(self) -> None:
@@ -289,6 +336,7 @@ class Engine:
         start = self.s.bot.starting_balance
         hosting = -self.store.ledger_total("running_cost")
         ai = -self.store.ledger_total("ai_cost")
+        funding = -self.store.ledger_total("funding")
         realised = sum(t["pnl"] or 0 for t in self.store.trades(100000))
         burn = self.daily_burn()
         runway = (equity - self.s.survival.floor_usd) / burn if equity is not None and burn > 0 else None
@@ -309,16 +357,19 @@ class Engine:
             "equity": equity,
             "starting_balance": start,
             "total_pnl": equity - start if equity is not None else None,
-            "trading_pnl": realised + (qty * price - cost_basis if qty and price else 0),
+            "trading_pnl": realised + (qty * price - cost_basis if qty and price else 0) - funding,
             "costs_paid": hosting + ai,
             "hosting_paid": hosting,
             "ai_paid": ai,
+            "funding_paid": funding,
             "monthly_cost": self.s.survival.monthly_running_cost_usd,
             "daily_burn": burn,
             "floor": self.s.survival.floor_usd,
             "runway_days": max(runway, 0) if runway is not None else None,
             "buy_hold_pct": (price / start_price - 1) * 100 if price and start_price else None,
+            "funding_rate": self.market.last_funding if hasattr(self.market, "last_funding") else None,
             "position": None if not qty else {
+                "side": "long" if qty > 0 else "short",
                 "qty": qty, "cost_basis": cost_basis, "stop": stop,
                 "value": qty * price if price else None,
                 "unrealised": qty * price - cost_basis if price else None,

@@ -34,6 +34,12 @@ class PaperBroker:
         price = market_price * (1 + self.costs.slippage_pct / 100)
         return Fill("buy", notional / price, price, notional, notional * self.costs.pool_fee_pct / 100, self.costs.gas_per_swap_usd)
 
+    def buy_qty(self, qty: float, market_price: float) -> Fill:
+        """Buy an exact quantity, used to close a short."""
+        price = market_price * (1 + self.costs.slippage_pct / 100)
+        notional = qty * price
+        return Fill("buy", qty, price, notional, notional * self.costs.pool_fee_pct / 100, self.costs.gas_per_swap_usd)
+
     def sell(self, qty: float, market_price: float) -> Fill:
         price = market_price * (1 - self.costs.slippage_pct / 100)
         notional = qty * price

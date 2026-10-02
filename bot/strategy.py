@@ -20,7 +20,7 @@ from .market import Candle
 
 @dataclass
 class Decision:
-    action: str  # "buy", "sell" or "hold"
+    action: str  # "buy" (go long), "short", "sell" (close) or "hold"
     reason: str
     stop: float | None = None
     size_usd: float | None = None  # None means size by the risk rule
@@ -78,8 +78,10 @@ def on_candle_close(candles: list[Candle], s: StrategySettings, in_position: boo
     return Decision("hold", f"Still trending up. Stop holds at {new_stop:,.2f}.", new_stop)
 
 
-def stop_hit(price: float, stop: float | None) -> bool:
-    return stop is not None and price <= stop
+def stop_hit(price: float, stop: float | None, qty: float = 1.0) -> bool:
+    if stop is None or qty == 0:
+        return False
+    return price <= stop if qty > 0 else price >= stop
 
 
 def position_size(equity: float, cash: float, price: float, stop: float, s: StrategySettings, gas: float) -> float:

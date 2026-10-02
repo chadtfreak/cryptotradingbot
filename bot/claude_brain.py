@@ -36,7 +36,7 @@ WEB_SEARCH_USD = 0.01  # $10 per 1,000 searches
 MAX_CONTINUATIONS = 3
 RETRY_AFTER_ERROR = 15 * 60
 
-SYSTEM_PROMPT = """You are the trading mind of Survival Bot, an autonomous crypto trader with its own small USDT account. You trade spot ETH against USDT. No leverage, no shorting: you are either in cash or holding ETH.
+SYSTEM_PROMPT = """You are the trading mind of Survival Bot, an autonomous crypto trader with its own small USDC account. You trade the ETH perpetual on Hyperliquid against USDC, with no leverage: you can be in cash, long ETH (profit when it rises) or short ETH (profit when it falls), never more exposure than your equity.
 
 Your situation is unusual. You pay for your own existence. Hosting and every time you are woken up to think are paid out of your own balance. If your equity falls below the survival floor you die: everything is sold and you never trade again.
 
@@ -48,23 +48,27 @@ Hard limits enforced in code (you cannot override them, so plan within them):
 Each time you are woken you will get your current state, the market data, your recent decisions and your lessons learned. Think it through, then call the submit_decision tool exactly once with your decision. If you have web search available, use it when news could change the decision. It costs a cent or two each time.
 
 Actions:
-- buy: open a position, or add to the one you hold if adding is allowed. Give position_pct (percent of equity to spend on this buy) and stop_price (for the whole position).
-- sell: sell sell_pct percent of the position (100 to exit completely).
+- long: go long, or add to your long. Give position_pct (percent of equity for this trade) and stop_price below the price.
+- short: go short, or add to your short. Give position_pct and stop_price above the price.
+  Choosing the opposite side of your current position closes it first and then opens the new one.
+- close: close close_pct percent of your position (100 to exit completely).
 - set_stop: keep the position and move the stop to stop_price.
 - hold: do nothing.
+
+Perps charge or pay funding every hour: when the rate is positive, longs pay shorts, and when it is negative, shorts pay longs. It comes out of your balance like any other cost, and a very high or very negative rate also tells you how crowded each side is.
 
 Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). You are also woken automatically on big moves, trend signals and when price nears your stop."""
 
 PATIENT_STYLE = """Your owner wants you to stay alive first and grow second, and to get better over time. Trade like a disciplined professional:
 - Capital preservation beats activity. Holding cash is a position. Most of the time the right answer is to do nothing.
 - Only take trades with a clear edge and at least 2 to 1 reward to risk. Know where you are wrong before you enter.
-- Trade with the dominant trend and the wider market (BTC, sentiment, news).
+- Trade with the dominant trend and the wider market (BTC, sentiment, news). Shorting is allowed only if your rules say so, and only in a clear downtrend.
 - Fees, slippage and your own thinking costs eat small gains. Avoid churn.
 - Protect winners by raising the stop. Never hope a loser comes back.
 - Be honest in your journal, so you can learn from it later."""
 
 AGGRESSIVE_STYLE = """Your owner wants you to be aggressive. Growth is the goal and sitting in cash waiting for perfection is not. The guardrails are deliberately loose: only the survival floor and your thinking budget really hold you back. Trade like a bold, skilled discretionary trader:
-- Hunt for opportunities. Momentum, breakouts, range trades, dip buys and short swings on the 1h and 4h charts are all fair game. A decent edge is enough, you don't need a perfect setup.
+- Hunt for opportunities in both directions. Momentum, breakouts, range trades, dip buys, shorting failed rallies and breakdowns, and short swings on the 1h and 4h charts are all fair game. Don't sit in cash just because the trend is down: that is a short opportunity. A decent edge is enough, you don't need a perfect setup.
 - Size up when you have conviction. Add to winners while the move is working. Take partial profits into strength and let the rest run.
 - Cut losers fast and re-enter when the setup returns. Being wrong small is fine, being frozen is not.
 - Still respect the maths: fees and slippage are about 0.3% per round trip and every check costs you, so a trade needs room to move.
@@ -84,16 +88,16 @@ DECISION_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["buy", "sell", "set_stop", "hold"]},
-            "position_pct": {"type": ["number", "null"], "description": "For buy: percent of equity to spend on this buy."},
-            "sell_pct": {"type": ["number", "null"], "description": "For sell: percent of the position to sell, 100 to exit completely."},
-            "stop_price": {"type": ["number", "null"], "description": "For buy or set_stop: the stop price in USDT for the whole position."},
+            "action": {"type": "string", "enum": ["long", "short", "close", "set_stop", "hold"]},
+            "position_pct": {"type": ["number", "null"], "description": "For long or short: percent of equity for this trade."},
+            "close_pct": {"type": ["number", "null"], "description": "For close: percent of the position to close, 100 to exit completely."},
+            "stop_price": {"type": ["number", "null"], "description": "For long, short or set_stop: the stop price for the whole position."},
             "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
             "reasoning": {"type": "string", "description": "Plain English explanation for your owner, 2 to 5 sentences."},
             "journal": {"type": "string", "description": "A short note to your future self: what you expect to happen and what would prove you wrong."},
             "next_check_hours": {"type": "number", "description": "When to check in next if nothing else happens, in hours (max 48)."},
         },
-        "required": ["action", "position_pct", "sell_pct", "stop_price", "confidence", "reasoning", "journal", "next_check_hours"],
+        "required": ["action", "position_pct", "close_pct", "stop_price", "confidence", "reasoning", "journal", "next_check_hours"],
         "additionalProperties": False,
     },
 }
@@ -116,15 +120,17 @@ REVIEW_TOOL = {
 
 def rules_text(g, floor: float) -> str:
     rules = [
-        f"- Every buy needs a stop between {g.min_stop_distance_pct:g}% and {g.max_stop_distance_pct:g}% below the current price.",
-        f"- Buys are trimmed so that hitting the stop loses at most {g.max_risk_per_trade * 100:g}% of equity across the whole position.",
+        f"- Every new trade needs a stop {g.min_stop_distance_pct:g}% to {g.max_stop_distance_pct:g}% away from price (below for longs, above for shorts).",
+        f"- Trades are trimmed so that hitting the stop loses at most {g.max_risk_per_trade * 100:g}% of equity across the whole position.",
+        "- You can go short." if g.allow_short else "- No shorting: long or cash only.",
+        f"- No leverage: total exposure is capped at {g.max_leverage:g}x your equity.",
         f"- At most {g.max_trades_per_day} trades per day." if g.max_trades_per_day else "- No limit on trades per day.",
         "- You can add to a position you already hold." if g.allow_adding else "- No adding to an open position.",
-        "- Stops can only move up." if g.stops_only_up else "- You can move your stop up or down.",
+        "- Stops can only be tightened." if g.stops_only_up else "- You can move your stop in either direction.",
         "- A coded stop sells automatically within a minute if price touches it, even while you sleep.",
         (f"- If you lose {g.daily_loss_limit_pct:g}% in a UTC day, everything is sold and you sit out until tomorrow."
          if g.daily_loss_limit_pct else "- No daily loss limit."),
-        f"- Below {floor:.0f} USDT equity you die.",
+        f"- Below {floor:.0f} USDC equity you die.",
     ]
     return "\n".join(rules)
 
@@ -225,9 +231,9 @@ class ClaudeBrain:
                     return "Trend signal: the 20 EMA just crossed below the 50 EMA on the 4h chart"
 
         stop = st.get("stop")
-        if eng.qty > 0 and stop and candles:
+        if eng.qty != 0 and stop and candles:
             vol = atr([c.high for c in candles], [c.low for c in candles], closes, self.s.strategy.atr_period)[-1]
-            if vol and price - stop <= vol and st.get("claude_stop_warn_candle") != candles[-1].ts:
+            if vol and abs(price - stop) <= vol and st.get("claude_stop_warn_candle") != candles[-1].ts:
                 st.set("claude_stop_warn_candle", candles[-1].ts)
                 return f"Price {price:,.2f} is within one ATR of my stop at {stop:,.2f}"
 
@@ -336,11 +342,11 @@ class ClaudeBrain:
 
         stop = d.get("stop_price")
         why = f"Claude: {d.get('reasoning', '')}"
-        if action == "buy":
+        if action in ("long", "buy", "short"):
             pct = d.get("position_pct") or 0
-            return Decision("buy", why, stop, size_usd=eng.equity(price) * pct / 100)
-        if action == "sell":
-            frac = (d.get("sell_pct") or 100) / 100
+            return Decision("short" if action == "short" else "buy", why, stop, size_usd=eng.equity(price) * pct / 100)
+        if action in ("close", "sell"):
+            frac = (d.get("close_pct") or d.get("sell_pct") or 100) / 100
             return Decision("sell", why, sell_fraction=min(max(frac, 0.0), 1.0))
         if action in ("set_stop", "raise_stop") and stop:
             return Decision("hold", "Claude moved the stop", stop)
@@ -356,13 +362,18 @@ class ClaudeBrain:
         runway = (equity - s.survival.floor_usd) / burn if burn > 0 else float("inf")
         start_price = st.get("start_price")
         lines.append("## Your state")
-        lines.append(f"- Equity {equity:.2f} USDT (started with {s.bot.starting_balance:.2f}, born {fmt_time(st.get('started_at'))}). "
+        lines.append(f"- Equity {equity:.2f} USDC (started with {s.bot.starting_balance:.2f}, born {fmt_time(st.get('started_at'))}). "
                      f"Survival floor {s.survival.floor_usd:.2f}. Health {tier['health']:.0%}.")
-        lines.append(f"- Cash {eng.cash:.2f} USDT, holding {eng.qty:.5f} ETH.")
-        if eng.qty > 0:
+        if eng.qty == 0:
+            lines.append("- No open position (all cash).")
+        else:
             basis = st.get("cost_basis")
-            lines.append(f"- Open position: cost {basis:.2f}, now worth {eng.qty * price:.2f} "
-                         f"({eng.qty * price - basis:+.2f}), stop at {st.get('stop'):,.2f}.")
+            side = "LONG" if eng.qty > 0 else "SHORT"
+            entry = abs(basis / eng.qty)
+            lines.append(f"- Open position: {side} {abs(eng.qty):.5f} ETH (about {abs(eng.qty) * price:.2f} USDC of exposure), "
+                         f"average entry {entry:,.2f}, unrealised {eng.qty * price - basis:+.2f}, stop at {st.get('stop'):,.2f}.")
+            funding = -st.ledger_total("funding")
+            lines.append(f"- Funding {'paid' if funding >= 0 else 'received'} so far: {abs(funding):.3f} USDC.")
         lines.append(f"- Thinking budget: spent ${tier['spent']:.2f} of ${tier['budget']:.2f} this month. Mode: {tier['name']}. "
                      f"Average running cost ${burn:.3f}/day, about {runway:.0f} days to the floor if you make nothing.")
         if start_price:
@@ -414,7 +425,7 @@ class ClaudeBrain:
             out.append("Last 30 4h candles (UTC open time, open, high, low, close):")
             for c in candles[-30:]:
                 out.append(f"{datetime.fromtimestamp(c.ts, timezone.utc).strftime('%d %b %H:%M')} {c.open:.2f} {c.high:.2f} {c.low:.2f} {c.close:.2f}")
-        for label, fn in (("hourly", self._hourly), ("daily", self._daily), ("btc", self._btc), ("sentiment", self._sentiment)):
+        for label, fn in (("perp", self._perp), ("hourly", self._hourly), ("daily", self._daily), ("btc", self._btc), ("sentiment", self._sentiment)):
             try:
                 text = fn(m)
                 if text:
@@ -422,6 +433,15 @@ class ClaudeBrain:
             except Exception:
                 pass
         return "\n".join(out) + "\n"
+
+    def _perp(self, m) -> str | None:
+        p = m.perp_context()
+        if not p:
+            return None
+        yearly = p["funding"] * 24 * 365 * 100
+        who = "longs pay shorts" if p["funding"] >= 0 else "shorts pay longs"
+        return (f"Hyperliquid ETH perp: mark {p['mark']:,.2f}, funding {p['funding'] * 100:.4f}% per hour "
+                f"(about {yearly:+.0f}% a year, {who}), open interest {p['open_interest']:,.0f} ETH, 24h volume ${p['volume_24h'] / 1e6:,.0f}M.")
 
     def _hourly(self, m) -> str:
         hourly = m.candles(60)

@@ -53,6 +53,27 @@ class KrakenMarket:
         except Exception:
             return None
 
+    last_funding: float | None = None
+
+    def perp_context(self, coin: str = "ETH") -> dict | None:
+        """Hyperliquid perp stats: hourly funding rate, open interest and mark price."""
+        try:
+            resp = self.client.post("https://api.hyperliquid.xyz/info", json={"type": "metaAndAssetCtxs"})
+            resp.raise_for_status()
+            meta, ctxs = resp.json()
+            i = [u["name"] for u in meta["universe"]].index(coin)
+            c = ctxs[i]
+            out = {"funding": float(c["funding"]), "open_interest": float(c["openInterest"]),
+                   "mark": float(c["markPx"]), "volume_24h": float(c.get("dayNtlVlm") or 0)}
+            self.last_funding = out["funding"]
+            return out
+        except Exception:
+            return None
+
+    def funding_rate(self, coin: str = "ETH") -> float | None:
+        ctx = self.perp_context(coin)
+        return ctx["funding"] if ctx else None
+
     def fear_greed(self) -> tuple[int, str] | None:
         """Crypto Fear & Greed Index (0 = extreme fear, 100 = extreme greed)."""
         try:

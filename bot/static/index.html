@@ -137,7 +137,7 @@
   <section class="grid kpis">
     <div class="card kpi"><div class="label">Equity</div><div class="value" id="equity">-</div><div class="note" id="equity-note"></div></div>
     <div class="card kpi"><div class="label">Total P&amp;L</div><div class="value" id="pnl">-</div><div class="note">after trading and running costs</div></div>
-    <div class="card kpi"><div class="label">Trading P&amp;L</div><div class="value" id="trading-pnl">-</div><div class="note">what the trading itself earned</div></div>
+    <div class="card kpi"><div class="label">Trading P&amp;L</div><div class="value" id="trading-pnl">-</div><div class="note">what the trading earned, after funding</div></div>
     <div class="card kpi"><div class="label">Running costs paid</div><div class="value" id="costs">-</div><div class="note" id="costs-note"></div></div>
     <div class="card kpi"><div class="label">Life left</div><div class="value" id="runway">-</div><div class="note" id="runway-note"></div><div class="bar"><div id="lifebar" style="width:0"></div></div></div>
   </section>
@@ -210,7 +210,7 @@ function renderStatus(s) {
   $("subtitle").textContent = `${s.label}: ${s.pair} on ${s.interval_minutes / 60}h candles${s.price ? `, last price ${usd(s.price)}` : ""}. Born ${when(s.started_at)}.`;
   $("csv").href = `api/${s.bot}/trades.csv`;
   $("equity").textContent = usd(s.equity);
-  $("equity-note").textContent = `started with ${usd(s.starting_balance)} USDT`;
+  $("equity-note").textContent = `started with ${usd(s.starting_balance)} USDC`;
   $("pnl").textContent = usd(s.total_pnl, true); tone($("pnl"), s.total_pnl);
   $("trading-pnl").textContent = usd(s.trading_pnl, true); tone($("trading-pnl"), s.trading_pnl);
   $("costs").textContent = usd(s.costs_paid);
@@ -230,14 +230,16 @@ function renderStatus(s) {
   banner.textContent = msg;
 
   const p = s.position;
-  $("position").innerHTML = !p ? `<div class="empty">Holding ${usd(s.cash)} USDT, no open position.</div>` : `
+  const fr = s.funding_rate == null ? "" : `<dt>Funding now</dt><dd>${(s.funding_rate * 100).toFixed(4)}%/h</dd>`;
+  $("position").innerHTML = !p ? `<div class="empty">Holding ${usd(s.cash)} USDC, no open position.</div>${fr ? `<dl>${fr}</dl>` : ""}` : `
     <dl>
-      <dt>Holding</dt><dd>${p.qty.toFixed(5)} ${esc(s.asset)}</dd>
-      <dt>Cost</dt><dd>${usd(p.cost_basis)}</dd>
-      <dt>Value now</dt><dd>${usd(p.value)}</dd>
+      <dt>Side</dt><dd><strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong></dd>
+      <dt>Size</dt><dd>${Math.abs(p.qty).toFixed(5)} ${esc(s.asset)} (${usd(Math.abs(p.qty) * s.price)})</dd>
+      <dt>Entry</dt><dd>${usd(Math.abs(p.cost_basis / p.qty))}</dd>
       <dt>Unrealised</dt><dd class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}</dd>
       <dt>Stop</dt><dd>${usd(p.stop)}</dd>
-      <dt>Cash</dt><dd>${usd(s.cash)}</dd>
+      <dt>Funding ${s.funding_paid >= 0 ? "paid" : "earned"}</dt><dd>${usd(Math.abs(s.funding_paid))}</dd>
+      ${fr}
     </dl>`;
   renderBrain(s.brain);
 }

@@ -4,10 +4,10 @@ name: Survival Bot
 tagline: Claude trades crypto and has to pay for its own thinking
 icon: https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/bot/static/icon.svg
 category: finance
-version: "1.2.0"
+version: "1.3.0"
 port: 8766
 description: >-
-  Claude trades ETH/USDT with its own small account. Every time it thinks, the
+  Claude trades ETH, long or short, with its own small account. Every time it thinks, the
   cost comes out of its own balance, and it dies if it falls below its survival
   floor. It keeps a trading journal and reviews itself every week to learn.
   A simple maths bot trades alongside it as a rival.
@@ -25,11 +25,10 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Full send mode for Claude: no daily trade limit, no daily loss limit, up to
-  25% risk per trade, adding to winners, partial profit taking and stops that
-  can move either way. It wakes on 2% moves, can check in hourly and now sees
-  the 1 hour chart. Only the $50 survival floor and the $15 thinking budget
-  hold it back. The maths bot keeps its careful rules.
+  Claude can now go short. Both bots paper trade as if on Hyperliquid's ETH
+  perpetual with no leverage: Hyperliquid fees, live hourly funding, and a
+  hard 1x exposure cap. Claude sees funding and open interest. The maths bot
+  stays long only. Balances now show in USDC.
 dependencies: []
 path: ""
 defaultUsername: ""

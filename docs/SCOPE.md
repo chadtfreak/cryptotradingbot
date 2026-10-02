@@ -8,9 +8,9 @@ A crypto trading bot with its own USDT wallet that has to earn its keep. It pays
 
 | Question | Decision |
 |---|---|
-| Where it trades | A decentralised exchange (Uniswap v3 on Arbitrum is the plan for live), from a self-custody wallet. No exchange account, no KYC. |
+| Where it trades | Hyperliquid's ETH perpetual at 1x (no leverage), from a self-custody wallet with a trade-only API key. No KYC. Paper trading models its fees and live funding. |
 | Who you are | Australian. Every trade is a CGT event, so the bot records the USDT/AUD rate at every trade and exports a CSV for tax time. |
-| Bankroll | $100 USDT |
+| Bankroll | $100 USDC |
 | Control | Fully autonomous, with a kill switch on the dashboard |
 | Survival rule | Running costs are paid from the bot's balance before anything counts as profit. Below $50 it dies. |
 | Hosting | Your Umbrel at home. The bot charges itself $1 a month as its share of the power bill. |
@@ -67,7 +67,9 @@ Health is how far equity sits between the $50 floor (0%) and the $100 start (100
 | Daily loss limit | none | 5%, then sits out until tomorrow |
 | Add to a position | yes | no |
 | Partial sells | yes | no |
-| Move the stop | up or down | up only |
+| Move the stop | either way | tighten only |
+| Go short | yes | no |
+| Leverage | none, 1x cap in code | none |
 | $50 survival floor | yes | yes |
 
 Claude's trading personality follows its rulebook: with "full send" it is told to hunt for trades, size up with conviction, add to winners and take partial profits, while sizing down as its health drops. It also wakes on 2% moves (not 3%), can check in as often as hourly, and sees the 1 hour chart. Its $15 monthly thinking cap is unchanged, so busier months push it onto the cheaper model sooner.
@@ -86,12 +88,24 @@ Claude's trading personality follows its rulebook: with "full send" it is told t
 
 **Exit criteria:** at least 4 weeks of paper trading where trading profit covers running costs, with no bugs in the log.
 
-### Stage 2: live on-chain trading
+### Why Hyperliquid (decided October 2026)
 
-- Generate a dedicated hot wallet on Arbitrum. Private key held in an environment variable on the server, never in the repo.
-- Live broker using the Uniswap v3 router: quote first, hard slippage limit, wait for confirmation, reconcile balances from the chain each tick.
-- Start with $100 USDT plus about $2 of ETH for gas.
-- Paper and live run side by side for a week so we can compare fills.
+Researched and chosen over Uniswap because:
+
+- stop orders live on the exchange, so they fire even if the Umbrel is offline
+- shorting, through the ETH perpetual, kept at 1x with no leverage
+- trade-only API keys that can't withdraw, so a leaked key can't drain the account
+- low fees (0.045% taker on perps, no gas) and a free testnet
+- open to Australians with no KYC (only the US, Ontario and sanctioned countries are restricted)
+
+Risks accepted: a young platform with a small validator set and past interventions (the JELLY and POPCAT incidents in 2025, both on small memecoins), and no Australian consumer protection. ASIC treats perps much like CFDs, and tax treatment may differ from spot, so check with an accountant before going live. Only keep the bot's own money there.
+
+### Stage 2: live on Hyperliquid
+
+1. Paper trading with Hyperliquid fees, funding and shorting (done in version 1.3).
+2. Run against Hyperliquid's testnet with pretend funds to prove orders, on-exchange stops and the API key work.
+3. Create a trade-only API wallet, kept on the Umbrel. The main wallet key never touches it.
+4. Deposit $100 USDC from Arbitrum and switch Claude to live. The maths bot can stay on paper as the benchmark.
 
 ### Stage 3: nice to haves
 

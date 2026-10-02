@@ -56,7 +56,8 @@ class MarketPlus(FakeMarket):
 def full_send():
     from bot.config import GuardrailSettings
     return GuardrailSettings(style="full send", max_risk_per_trade=0.25, min_stop_distance_pct=0.5, max_stop_distance_pct=50,
-                             max_trades_per_day=0, daily_loss_limit_pct=0, allow_adding=True, stops_only_up=False)
+                             max_trades_per_day=0, daily_loss_limit_pct=0, allow_adding=True, stops_only_up=False,
+                             allow_short=True, max_leverage=1.0)
 
 
 def make(replies, closes=None, price=None, key="sk-ant-test", guardrails=None):
@@ -132,7 +133,7 @@ def test_stop_can_only_move_up():
         eng.store.set("claude_next_check_ts", None)
         eng.tick()
     assert eng.store.get("stop") == 97
-    assert any("stops only move up" in e["message"] for e in eng.store.events())
+    assert any("can only be tightened" in e["message"] for e in eng.store.events())
 
 
 def test_big_move_wakes_claude():
@@ -259,7 +260,8 @@ def test_full_send_prompt_matches_rules():
     assert "aggressive" in system
     assert "No limit on trades per day." in system
     assert "No daily loss limit." in system
-    assert "up or down" in system
+    assert "either direction" in system
+    assert "You can go short." in system
     assert "25% of equity" in system
 
 
@@ -267,7 +269,8 @@ def test_careful_prompt_for_careful_rules():
     eng, fake, *_ = make([tool_reply("submit_decision", decision("hold"))])
     eng.tick()
     assert "Capital preservation" in fake.requests[0]["system"]
-    assert "Stops can only move up." in fake.requests[0]["system"]
+    assert "Stops can only be tightened." in fake.requests[0]["system"]
+    assert "No shorting" in fake.requests[0]["system"]
 
 
 def test_full_send_big_size_add_partial_sell_and_lower_stop():
@@ -321,3 +324,86 @@ def test_risk_cap_limits_full_send_losses():
     eng.tick()
     assert eng.status == "running" and eng.qty == 0
     assert 65 < eng.equity(45) < 80  # roughly the 25% risk cap, plus a little gap slippage
+
+
+# Shorting
+
+def test_short_profits_when_price_falls():
+    eng, fake, market, clock = make([
+        tool_reply("submit_decision", decision("short", pct=40, stop=110)),
+        tool_reply("submit_decision", {**decision("close"), "close_pct": 100}),
+    ], guardrails=full_send())
+    eng.tick()
+    assert eng.qty < 0 and eng.store.get("stop") == 110
+    assert eng.cash > 100  # sale proceeds sit in cash
+    assert 99.7 < eng.equity(100) < 100  # only thinking cost, fees and slippage lost so far
+    market.set(price=90)
+    wake_again(eng, clock)
+    assert eng.qty == 0
+    close = eng.store.trades()[0]
+    assert close["pnl"] == pytest.approx(0.10 * 40, rel=0.1)  # 10% move on a $40 short, less fees
+
+
+def test_short_stop_triggers_when_price_rises():
+    eng, fake, market, clock = make([tool_reply("submit_decision", decision("short", pct=40, stop=105))], guardrails=full_send())
+    eng.tick()
+    market.set(price=106)
+    clock.t += 60
+    eng.tick()
+    assert eng.qty == 0
+    assert "rose to or above" in eng.store.trades()[0]["reason"]
+    assert eng.store.trades()[0]["pnl"] < 0
+
+
+def test_short_stop_must_be_above_price():
+    eng, fake, *_ = make([tool_reply("submit_decision", decision("short", pct=40, stop=95))], guardrails=full_send())
+    eng.tick()
+    assert eng.qty == 0
+    assert any("short rejected" in e["message"] for e in eng.store.events())
+
+
+def test_flip_from_long_to_short():
+    eng, fake, market, clock = make([
+        tool_reply("submit_decision", decision("long", pct=40, stop=95)),
+        tool_reply("submit_decision", decision("short", pct=40, stop=105)),
+    ], guardrails=full_send())
+    eng.tick()
+    assert eng.qty > 0
+    wake_again(eng, clock)
+    assert eng.qty < 0
+    sides = [t["side"] for t in reversed(eng.store.trades())]
+    assert sides == ["buy", "sell", "sell"]  # buy long, sell to close, sell to open short
+
+
+def test_no_leverage_on_shorts():
+    eng, fake, *_ = make([tool_reply("submit_decision", decision("short", pct=300, stop=150))], guardrails=full_send())
+    eng.tick()
+    assert abs(eng.qty) * 100 <= eng.equity(100) * 1.0 + 0.01
+
+
+def test_careful_bot_cannot_short():
+    eng, fake, *_ = make([tool_reply("submit_decision", decision("short", pct=40, stop=105))])
+    eng.tick()
+    assert eng.qty == 0
+    assert any("isn't allowed to short" in e["message"] for e in eng.store.events())
+
+
+def test_funding_paid_by_longs_and_received_by_shorts():
+    for action, stop, sign in (("long", 95, -1), ("short", 105, 1)):
+        eng, fake, market, clock = make([tool_reply("submit_decision", decision(action, pct=50, stop=stop))], guardrails=full_send())
+        market.funding = 0.0001  # 0.01% an hour
+        eng.tick()
+        clock.t += 3600
+        eng.tick()
+        assert eng.summary()["funding_paid"] == pytest.approx(-sign * 50 * 0.0001, rel=0.05)
+
+
+def test_funding_starts_for_position_opened_before_upgrade():
+    eng, fake, market, clock = make([tool_reply("submit_decision", decision("long", pct=50, stop=95))], guardrails=full_send())
+    eng.tick()
+    eng.store.set("last_funding_ts", None)  # as if the position predates funding support
+    market.funding = 0.0001
+    for _ in range(3):
+        clock.t += 3600
+        eng.tick()
+    assert eng.summary()["funding_paid"] > 0
