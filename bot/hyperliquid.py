@@ -190,6 +190,10 @@ def check_credentials(network: str, account: str, agent_key: str) -> tuple[bool,
                            "Create it under More, API on the Hyperliquid site while connected with your main wallet."), None
         value = float(info.user_state(account)["marginSummary"]["accountValue"])
         if value < MIN_ORDER_USD:
+            spot = sum(float(b["total"]) for b in info.spot_user_state(account).get("balances", []) if b["coin"] == "USDC")
+            if spot >= MIN_ORDER_USD:
+                return False, (f"Your {spot:,.2f} USDC is in your Spot balance, but the bot trades perps. On the Hyperliquid "
+                               "site, open Portfolio, tap Transfer and move it from Spot to Perps, then try again."), value
             return False, f"The account only has {value:.2f} USDC on {network}. It needs funds before the bot can trade.", value
         return True, "ok", value
     except Exception as exc:

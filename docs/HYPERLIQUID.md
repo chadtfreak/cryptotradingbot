@@ -34,6 +34,8 @@ This money stays in your account. It will also be ready for when Claude goes liv
 1. Go to **app.hyperliquid-testnet.xyz** and connect the **same wallet**.
 2. Find the **faucet** (Portfolio page, or the "Claim mock USDC" button) and claim **1,000 mock USDC**.
 
+3. Move it into your **Perps** balance: open **Portfolio**, tap **Transfer**, and move the USDC from **Spot to Perps**. The faucet puts it in Spot, but the bot trades perps.
+
 Don't use **Deposit** on the testnet site. It asks you to switch to "Arbitrum Sepolia", a test network, and will show a balance of 0. The faucet is the only way to get testnet money.
 
 The bot only treats $100 of it as Claude's bankroll, so it behaves exactly as it will with real money.
@@ -46,6 +48,8 @@ Still on **app.hyperliquid-testnet.xyz**:
 2. Give it a name like `survival-bot` and click **Generate**.
 3. **Copy the private key** that appears and keep it somewhere safe for the next step. It's only shown once.
 4. Set how long it's valid for (the maximum is fine), then click **Authorize** and approve it in your wallet.
+
+If your wallet never pops up to approve it, turn on **testnets** in your wallet's settings (the testnet uses the Arbitrum Sepolia test network), then reload the page. Phone wallet apps are often unreliable here, so a computer with the wallet's browser extension is the easiest way to do this step.
 
 This API wallet can place trades for your account but **can never withdraw**. If its key ever leaked, the worst anyone could do is make bad trades.
 
