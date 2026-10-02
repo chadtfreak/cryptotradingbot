@@ -30,3 +30,20 @@ def atr(highs: list[float], lows: list[float], closes: list[float], period: int)
         current = (current * (period - 1) + trs[i]) / period
         out[i] = current
     return out
+
+
+def rsi(closes: list[float], period: int = 14) -> list[float | None]:
+    """Relative Strength Index, Wilder smoothing."""
+    out: list[float | None] = [None] * len(closes)
+    if len(closes) <= period:
+        return out
+    gains = [max(closes[i] - closes[i - 1], 0) for i in range(1, len(closes))]
+    losses = [max(closes[i - 1] - closes[i], 0) for i in range(1, len(closes))]
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(closes)):
+        if i > period:
+            avg_gain = (avg_gain * (period - 1) + gains[i - 1]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i - 1]) / period
+        out[i] = 100.0 if avg_loss == 0 else 100 - 100 / (1 + avg_gain / avg_loss)
+    return out

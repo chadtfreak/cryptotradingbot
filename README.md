@@ -1,6 +1,6 @@
 # Survival Bot
 
-A crypto trading bot that has to pay its own way. It trades ETH/USDT, pays its hosting costs from its own balance, and dies if it drops below its survival floor. A dashboard shows what it's doing and why.
+Claude trades crypto with its own small account and has to pay its own way. It trades ETH/USDT, pays for its hosting and every bit of its own thinking from its balance, and dies if it drops below its survival floor. It keeps a journal and reviews itself weekly to get better. A simple maths bot trades alongside it as a rival. A dashboard shows what both are doing and why.
 
 Currently in **paper mode**: real live prices, pretend money. See [docs/SCOPE.md](docs/SCOPE.md) for the plan and the honest maths.
 
@@ -41,7 +41,7 @@ Mac: `python -m bot run`
 
 Windows: `.venv\Scripts\python -m bot run`
 
-**6. Open http://127.0.0.1:8000** in your browser. That's the dashboard.
+**6. Open http://127.0.0.1:8000** in your browser. That's the dashboard. Paste your Anthropic API key into the **Claude's brain** panel so Claude can start thinking (see [docs/UMBREL.md](docs/UMBREL.md) for how to get one).
 
 To stop it, go back to the terminal and press **Ctrl+C**. To start it again later, open a terminal in the folder (step 3), then on Mac run `source .venv/bin/activate` followed by `python -m bot run`, or on Windows just run `.venv\Scripts\python -m bot run`.
 

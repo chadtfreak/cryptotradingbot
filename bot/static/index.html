@@ -17,46 +17,71 @@
   :root {
     --bg: #f5f6f8; --panel: #ffffff; --ink: #14171c; --muted: #66707d; --line: #e3e6ea;
     --good: #12805c; --bad: #c4302b; --warn: #b26a00; --accent: #2c5be8; --accent-soft: #e8eefd;
+    --claude: #c96442; --claude-soft: #f8ece6;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #0f1215; --panel: #171b20; --ink: #e8ebef; --muted: #8b95a3; --line: #262c34;
-            --good: #3ccf95; --bad: #ff6b63; --warn: #f0a83a; --accent: #7a9cff; --accent-soft: #1d2640; }
+            --good: #3ccf95; --bad: #ff6b63; --warn: #f0a83a; --accent: #7a9cff; --accent-soft: #1d2640;
+            --claude: #e08a68; --claude-soft: #2c1f1a; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, sans-serif; }
   .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 60px; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 20px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
   h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
   .sub { color: var(--muted); font-size: 13px; }
   .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .pill.paper { background: var(--accent-soft); color: var(--accent); }
-  .pill.running { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
-  .pill.paused, .pill.stopped { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
-  .pill.dead { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  .pill.running, .pill.sharp { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+  .pill.paused, .pill.stopped, .pill.lean { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+  .pill.dead, .pill.survival, .pill.asleep { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
   .controls { display: flex; gap: 8px; flex-wrap: wrap; }
   button, .btn { font: inherit; font-weight: 600; font-size: 14px; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-decoration: none; }
   button.kill { background: var(--bad); border-color: var(--bad); color: #fff; }
   button:disabled { opacity: 0.4; cursor: default; }
+  .tabs { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; margin-bottom: 14px; }
+  .tabs button { border: 0; background: transparent; padding: 7px 16px; border-radius: 7px; color: var(--muted); }
+  .tabs button.on { background: var(--ink); color: var(--bg); }
   .grid { display: grid; gap: 14px; }
+  .race { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 14px; }
+  .race .card { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 12px 16px; }
+  .race .who { font-weight: 600; }
+  .race .who small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .race .pct { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .race .card.me { outline: 2px solid var(--claude); outline-offset: -1px; }
   .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 14px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
   .kpi .label { color: var(--muted); font-size: 13px; }
   .kpi .value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
   .kpi .note { color: var(--muted); font-size: 12px; }
   .good { color: var(--good); } .bad { color: var(--bad); }
-  .life { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 8px; }
-  .life > div { height: 100%; background: var(--good); transition: width 0.4s; }
+  .bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; background: var(--good); transition: width 0.4s; }
   .main { grid-template-columns: 2fr 1fr; margin-bottom: 14px; }
   @media (max-width: 860px) { .main { grid-template-columns: 1fr; } }
+  .brain { border-color: color-mix(in srgb, var(--claude) 45%, var(--line)); margin-bottom: 14px; }
+  .brain h2 { color: var(--claude); }
+  .brain-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .brain-grid .label { color: var(--muted); font-size: 13px; }
+  .brain-grid .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .thought { background: var(--claude-soft); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .thought .meta { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .thought .action { font-weight: 700; margin-right: 6px; }
+  .thought .journal { color: var(--muted); font-size: 14px; margin-top: 6px; font-style: italic; }
+  .lessons { white-space: pre-wrap; font-size: 14px; }
+  .keyform { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .keyform input { flex: 1; min-width: 200px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  .msg { font-size: 13px; margin-top: 6px; }
   .chartbox { position: relative; height: 300px; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
   dt { color: var(--muted); } dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-  .log { max-height: 420px; overflow-y: auto; }
+  .log { max-height: 520px; overflow-y: auto; }
   .event { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
   .event:last-child { border-bottom: 0; }
   .event time { display: block; color: var(--muted); font-size: 12px; font-family: "JetBrains Mono", monospace; }
   .event.trade { border-left: 3px solid var(--accent); padding-left: 10px; }
+  .event.thought { border-left: 3px solid var(--claude); padding-left: 10px; }
   .event.warning { border-left: 3px solid var(--warn); padding-left: 10px; }
   .event.error, .event.critical { border-left: 3px solid var(--bad); padding-left: 10px; }
   .tablewrap { overflow-x: auto; }
@@ -66,6 +91,7 @@
   td.reason { white-space: normal; min-width: 260px; color: var(--muted); }
   .empty { color: var(--muted); padding: 12px 0; }
   .banner { display: none; background: color-mix(in srgb, var(--bad) 12%, var(--panel)); border: 1px solid var(--bad); color: var(--ink); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
@@ -76,20 +102,44 @@
       <div class="sub" id="subtitle">Loading...</div>
     </div>
     <div class="controls">
-      <a class="btn" href="api/trades.csv">Export trades (CSV)</a>
+      <a class="btn" id="csv" href="#">Export trades (CSV)</a>
       <button id="resume">Resume</button>
       <button id="kill" class="kill">Kill switch</button>
     </div>
   </header>
 
+  <div class="tabs" id="tabs"></div>
   <div class="banner" id="banner"></div>
+
+  <section class="grid race" id="race"></section>
+
+  <section class="card brain hidden" id="brain">
+    <h2>Claude's brain</h2>
+    <div class="brain-grid">
+      <div><div class="label">Mode</div><div class="value"><span id="tier" class="pill">-</span> <span id="model" class="sub"></span></div></div>
+      <div><div class="label">Thinking budget this month</div><div class="value" id="spend">-</div><div class="bar"><div id="spendbar" style="width:0"></div></div></div>
+      <div><div class="label">Last check</div><div class="value" id="lastwake">-</div><div class="sub" id="nextwake"></div></div>
+    </div>
+
+    <div class="thought hidden" id="thought"></div>
+    <div id="keybox" class="hidden">
+      <div class="label"><strong>Anthropic API key</strong></div>
+      <div class="sub" id="keystate"></div>
+      <div class="keyform" id="keyform">
+        <input id="keyinput" type="password" placeholder="sk-ant-..." autocomplete="off">
+        <button id="keysave">Save key</button>
+      </div>
+      <div class="msg" id="keymsg"></div>
+    </div>
+    <div style="text-align:right"><a href="#" id="keychange" class="sub hidden">Change API key</a></div>
+  </section>
 
   <section class="grid kpis">
     <div class="card kpi"><div class="label">Equity</div><div class="value" id="equity">-</div><div class="note" id="equity-note"></div></div>
     <div class="card kpi"><div class="label">Total P&amp;L</div><div class="value" id="pnl">-</div><div class="note">after trading and running costs</div></div>
-    <div class="card kpi"><div class="label">Trading P&amp;L</div><div class="value" id="trading-pnl">-</div><div class="note">what the strategy earned</div></div>
+    <div class="card kpi"><div class="label">Trading P&amp;L</div><div class="value" id="trading-pnl">-</div><div class="note">what the trading itself earned</div></div>
     <div class="card kpi"><div class="label">Running costs paid</div><div class="value" id="costs">-</div><div class="note" id="costs-note"></div></div>
-    <div class="card kpi"><div class="label">Life left</div><div class="value" id="runway">-</div><div class="note" id="runway-note"></div><div class="life"><div id="lifebar" style="width:0"></div></div></div>
+    <div class="card kpi"><div class="label">Life left</div><div class="value" id="runway">-</div><div class="note" id="runway-note"></div><div class="bar"><div id="lifebar" style="width:0"></div></div></div>
   </section>
 
   <section class="grid main">
@@ -101,35 +151,72 @@
     <div class="card"><h2>Trades</h2><div class="tablewrap" id="trades"></div></div>
     <div class="card"><h2>What I'm thinking</h2><div class="log" id="events"></div></div>
   </section>
+
+  <section class="card hidden" id="lessons-card">
+    <h2>Lessons learned</h2>
+    <div class="sub" id="lessons-meta"></div>
+    <div class="lessons" id="lessons"></div>
+  </section>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const usd = (n, sign = false) => n == null ? "-" : (sign && n > 0 ? "+" : "") + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const when = (ts) => new Date(ts * 1000).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const pct = (n) => n == null ? "-" : (n > 0 ? "+" : "") + n.toFixed(1) + "%";
+const when = (ts) => ts ? new Date(ts * 1000).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "-";
 const tone = (el, n) => { el.classList.toggle("good", n > 0); el.classList.toggle("bad", n < 0); };
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-let chart;
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let chart, bots = [], current = null;
+try { current = localStorage.getItem("bot"); } catch (e) {}
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
-  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  if (!r.ok) {
+    let detail = `${r.status}`;
+    try { detail = (await r.json()).detail || detail; } catch (e) {}
+    throw new Error(detail);
+  }
   return r.json();
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = bots.map((b) => `<button data-bot="${b.bot}" class="${b.bot === current ? "on" : ""}">${esc(b.label)}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach((btn) => btn.onclick = () => {
+    current = btn.dataset.bot;
+    try { localStorage.setItem("bot", current); } catch (e) {}
+    if (chart) { chart.destroy(); chart = null; }
+    refresh();
+  });
+  $("tabs").classList.toggle("hidden", bots.length < 2);
+}
+
+function renderRace() {
+  const rows = bots.map((b) => ({
+    who: b.label, me: b.bot === current,
+    pct: b.equity == null ? null : (b.equity / b.starting_balance - 1) * 100,
+    note: `since ${when(b.started_at)}`,
+  }));
+  const ref = bots.find((b) => b.bot === current) || bots[0];
+  if (ref) rows.push({ who: "Just holding ETH", pct: ref.buy_hold_pct, note: `since ${esc(ref.label)} started` });
+  $("race").innerHTML = rows.map((r) => `<div class="card ${r.me ? "me" : ""}">
+    <div class="who">${esc(r.who)}<small>${r.note}</small></div>
+    <div class="pct ${r.pct > 0 ? "good" : r.pct < 0 ? "bad" : ""}">${pct(r.pct)}</div></div>`).join("");
 }
 
 function renderStatus(s) {
   $("mode").textContent = s.mode;
   $("status").textContent = s.status;
   $("status").className = "pill " + s.status;
-  $("subtitle").textContent = `${s.pair} on ${s.interval_minutes / 60}h candles${s.price ? `, last price ${usd(s.price)}` : ""}. Born ${when(s.started_at)}.`;
+  $("subtitle").textContent = `${s.label}: ${s.pair} on ${s.interval_minutes / 60}h candles${s.price ? `, last price ${usd(s.price)}` : ""}. Born ${when(s.started_at)}.`;
+  $("csv").href = `api/${s.bot}/trades.csv`;
   $("equity").textContent = usd(s.equity);
   $("equity-note").textContent = `started with ${usd(s.starting_balance)} USDT`;
   $("pnl").textContent = usd(s.total_pnl, true); tone($("pnl"), s.total_pnl);
   $("trading-pnl").textContent = usd(s.trading_pnl, true); tone($("trading-pnl"), s.trading_pnl);
   $("costs").textContent = usd(s.costs_paid);
-  $("costs-note").textContent = `${usd(s.monthly_cost)} USD a month for hosting`;
+  $("costs-note").textContent = s.ai_paid ? `${usd(s.hosting_paid)} hosting, ${usd(s.ai_paid)} thinking` : `${usd(s.monthly_cost)} USD a month for hosting`;
   $("runway").textContent = s.runway_days == null ? "-" : `${Math.floor(s.runway_days)} days`;
-  $("runway-note").textContent = `until equity hits the ${usd(s.floor)} floor, if it makes nothing`;
+  $("runway-note").textContent = `to the ${usd(s.floor)} floor at ${usd(s.daily_burn)} a day, if it makes nothing`;
   const life = s.equity == null ? 0 : Math.max(0, Math.min(1, (s.equity - s.floor) / (s.starting_balance - s.floor)));
   $("lifebar").style.width = (life * 100) + "%";
   $("lifebar").style.background = life > 0.5 ? "var(--good)" : life > 0.2 ? "var(--warn)" : "var(--bad)";
@@ -137,13 +224,13 @@ function renderStatus(s) {
   $("resume").disabled = !(s.status === "stopped" || s.status === "paused");
 
   const banner = $("banner");
-  const msg = s.status === "dead" ? "The bot hit its survival floor and has stopped for good."
+  const msg = s.status === "dead" ? `${s.label} hit its survival floor and has stopped for good.`
     : s.last_error ? `Last check failed: ${s.last_error}` : "";
   banner.style.display = msg ? "block" : "none";
   banner.textContent = msg;
 
   const p = s.position;
-  $("position").innerHTML = !p ? `<div class="empty">Holding ${usd(s.cash)} USDT, no open position. Waiting for an uptrend.</div>` : `
+  $("position").innerHTML = !p ? `<div class="empty">Holding ${usd(s.cash)} USDT, no open position.</div>` : `
     <dl>
       <dt>Holding</dt><dd>${p.qty.toFixed(5)} ${esc(s.asset)}</dd>
       <dt>Cost</dt><dd>${usd(p.cost_basis)}</dd>
@@ -152,17 +239,61 @@ function renderStatus(s) {
       <dt>Stop</dt><dd>${usd(p.stop)}</dd>
       <dt>Cash</dt><dd>${usd(s.cash)}</dd>
     </dl>`;
+  renderBrain(s.brain);
 }
+
+const TIER_TEXT = {
+  sharp: "Healthy and on budget: smartest model, can read the news",
+  lean: "Saving money: cheaper model, no news searches",
+  survival: "Close to the edge: cheap model, only wakes for real events",
+  asleep: "Budget used up: sleeping until next month, stops still active",
+};
+
+function renderBrain(b) {
+  $("brain").classList.toggle("hidden", !b);
+  $("lessons-card").classList.toggle("hidden", !b);
+  if (!b) return;
+  $("tier").textContent = b.tier || "-";
+  $("tier").className = "pill " + (b.tier || "");
+  $("model").textContent = b.key_set ? (b.model ? b.model.replace("claude-", "") : "") : "";
+  $("tier").title = TIER_TEXT[b.tier] || "";
+  $("spend").textContent = `$${b.spent_this_month.toFixed(2)} of $${b.budget.toFixed(2)}`;
+  const used = Math.min(1, b.spent_this_month / b.budget);
+  $("spendbar").style.width = (used * 100) + "%";
+  $("spendbar").style.background = used < 0.6 ? "var(--good)" : used < 0.85 ? "var(--warn)" : "var(--bad)";
+  $("lastwake").textContent = b.last_wake ? when(b.last_wake) : "Not yet";
+  $("nextwake").textContent = b.next_check ? `Next scheduled check ${when(b.next_check)}, sooner if the market moves` : "";
+
+  const d = b.last_decision;
+  $("thought").classList.toggle("hidden", !d);
+  if (d) {
+    $("thought").innerHTML = `<div class="meta">Latest thinking, ${when(d.ts)}, ${esc((d.model || "").replace("claude-", ""))}, cost $${(d.cost || 0).toFixed(3)}. Woken because: ${esc(d.wake_reason)}</div>
+      <div><span class="action">${esc((d.action || "no decision").toUpperCase().replace("_", " "))}</span>${d.confidence ? `<span class="sub">(${esc(d.confidence)} confidence)</span> ` : ""}${esc(d.reasoning)}</div>
+      ${d.journal ? `<div class="journal">Note to self: ${esc(d.journal)}</div>` : ""}`;
+  }
+
+  $("keybox").classList.toggle("hidden", b.key_set && !showKeyForm);
+  $("keystate").innerHTML = b.key_set
+    ? "Paste a new key to replace the saved one."
+    : `Claude needs an API key to think. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>, and set a monthly spend limit there as a backstop.`;
+  $("keyform").classList.toggle("hidden", b.key_from_env);
+  $("keychange").classList.toggle("hidden", !b.key_set || b.key_from_env || showKeyForm);
+
+  $("lessons-meta").textContent = b.lessons_updated ? `Last rewritten in its weekly review, ${when(b.lessons_updated)}` : "Claude reviews its own decisions once a week and writes its lessons here.";
+  $("lessons").textContent = b.lessons || "";
+}
+let showKeyForm = false;
 
 function renderChart(points) {
   if (typeof Chart === "undefined") return;
-  const data = points.map((p) => ({ x: p.ts * 1000, y: p.equity }));
-  const labels = data.map((d) => new Date(d.x).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }));
+  const labels = points.map((p) => when(p.ts));
+  const values = points.map((p) => p.equity);
   const css = getComputedStyle(document.documentElement);
+  const color = css.getPropertyValue(current === "claude" ? "--claude" : "--accent").trim();
   if (!chart) {
     chart = new Chart($("chart"), {
       type: "line",
-      data: { labels, datasets: [{ data: data.map((d) => d.y), borderColor: css.getPropertyValue("--accent").trim(), borderWidth: 2, pointRadius: data.length < 3 ? 3 : 0, tension: 0.2, fill: false }] },
+      data: { labels, datasets: [{ data: values, borderColor: color, borderWidth: 2, pointRadius: values.length < 3 ? 3 : 0, tension: 0.2, fill: false }] },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
@@ -174,13 +305,13 @@ function renderChart(points) {
     });
   } else {
     chart.data.labels = labels;
-    chart.data.datasets[0].data = data.map((d) => d.y);
-    chart.data.datasets[0].pointRadius = data.length < 3 ? 3 : 0;
+    chart.data.datasets[0].data = values;
+    chart.data.datasets[0].pointRadius = values.length < 3 ? 3 : 0;
     chart.update();
   }
 }
 
-function renderTrades(trades, asset) {
+function renderTrades(trades) {
   if (!trades.length) { $("trades").innerHTML = `<div class="empty">No trades yet.</div>`; return; }
   $("trades").innerHTML = `<table><thead><tr><th>When</th><th>Side</th><th>Qty</th><th>Price</th><th>Value</th><th>P&amp;L</th><th>Why</th></tr></thead><tbody>${
     trades.map((t) => `<tr>
@@ -197,8 +328,13 @@ function renderEvents(events) {
 
 async function refresh() {
   try {
-    const [s, eq, trades, events] = await Promise.all([api("api/status"), api("api/equity"), api("api/trades"), api("api/events")]);
-    renderStatus(s); renderChart(eq); renderTrades(trades, s.asset); renderEvents(events);
+    bots = await api("api/bots");
+    if (!bots.find((b) => b.bot === current)) current = bots[0]?.bot;
+    renderTabs();
+    renderRace();
+    const [s, eq, trades, events] = await Promise.all([
+      api(`api/${current}/status`), api(`api/${current}/equity`), api(`api/${current}/trades`), api(`api/${current}/events`)]);
+    renderStatus(s); renderChart(eq); renderTrades(trades); renderEvents(events);
   } catch (e) {
     $("banner").style.display = "block";
     $("banner").textContent = `Can't reach the bot: ${e.message}`;
@@ -206,10 +342,27 @@ async function refresh() {
 }
 
 $("kill").onclick = async () => {
-  if (!confirm("Sell everything and stop trading?")) return;
-  renderStatus(await api("api/kill", { method: "POST" })); refresh();
+  if (!confirm("Sell everything and stop this bot trading?")) return;
+  renderStatus(await api(`api/${current}/kill`, { method: "POST" })); refresh();
 };
-$("resume").onclick = async () => { renderStatus(await api("api/resume", { method: "POST" })); refresh(); };
+$("resume").onclick = async () => { renderStatus(await api(`api/${current}/resume`, { method: "POST" })); refresh(); };
+$("keychange").onclick = (e) => { e.preventDefault(); showKeyForm = true; refresh(); };
+$("keysave").onclick = async () => {
+  const key = $("keyinput").value.trim();
+  $("keymsg").textContent = "Checking the key with Anthropic...";
+  $("keymsg").className = "msg";
+  try {
+    const s = await api("api/claude/key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
+    $("keyinput").value = "";
+    showKeyForm = false;
+    $("keymsg").textContent = "Saved. Claude will take its first look at the market within a minute.";
+    $("keymsg").className = "msg good";
+    renderStatus(s);
+  } catch (e) {
+    $("keymsg").textContent = e.message;
+    $("keymsg").className = "msg bad";
+  }
+};
 
 refresh();
 setInterval(refresh, 10000);

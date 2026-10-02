@@ -1,19 +1,21 @@
 manifestVersion: 1
 id: chad-survival-bot
 name: Survival Bot
-tagline: A crypto trading bot that has to pay its own way
+tagline: Claude trades crypto and has to pay for its own thinking
 icon: https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/bot/static/icon.svg
 category: finance
-version: "1.0.0"
+version: "1.1.0"
 port: 8766
 description: >-
-  A trend following ETH/USDT trading bot. It pays its own running costs out of
-  its balance and dies if it falls below its survival floor.
+  Claude trades ETH/USDT with its own small account. Every time it thinks, the
+  cost comes out of its own balance, and it dies if it falls below its survival
+  floor. It keeps a trading journal and reviews itself every week to learn.
+  A simple maths bot trades alongside it as a rival.
 
 
-  Currently in paper mode: live prices, pretend money. The dashboard shows its
-  balance, profit, days of life left, open position, trades and a plain English
-  log of every decision, with a kill switch and a CSV export for tax time.
+  Currently in paper mode: live prices, pretend money. Needs an Anthropic API
+  key, added in the dashboard.
+
 developer: chadtfreak
 website: https://github.com/chadtfreak/cryptotradingbot
 submitter: chadtfreak
@@ -23,7 +25,10 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  First release: paper trading, survival ledger and dashboard.
+  Claude is now the trader. It wakes when the market does something worth a
+  decision, pays for its own thinking within a $15 a month cap, keeps a journal
+  and rewrites its lessons every week. The maths bot keeps running alongside it
+  so you can see who does better. Add your Anthropic API key in the dashboard.
 dependencies: []
 path: ""
 defaultUsername: ""

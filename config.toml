@@ -28,3 +28,23 @@ gas_per_swap_usd = 0.05
 monthly_running_cost_usd = 1.0   # Umbrel power share. The bot pays this out of its own balance.
 floor_usd = 50.0                 # below this the bot is "dead": it sells up and stops for good
 daily_loss_limit_pct = 5.0       # lose this much in a UTC day and it sits out until tomorrow
+
+[guardrails]
+# Hard limits in code. Neither brain can override these.
+max_risk_per_trade = 0.03        # never risk more than 3% of equity on one trade
+min_stop_distance_pct = 1.0      # every buy needs a stop 1% to 15% below price
+max_stop_distance_pct = 15.0
+max_trades_per_day = 4
+
+[claude]
+enabled = true
+db_path = "data/claude.db"
+monthly_budget_usd = 15.0        # hard cap on Claude's thinking, per calendar month
+smart_model = "claude-opus-5-5"  # used while Claude is healthy and on budget
+lean_model = "claude-sonnet-5-5" # used when money or budget is tight
+review_model = "claude-opus-5-5" # weekly review where it updates its lessons
+heartbeat_hours = 24.0           # check in at least this often even when nothing happens
+move_trigger_pct = 3.0           # wake if price moves this much since the last check
+min_minutes_between_wakes = 60
+review_every_days = 7
+web_searches_per_wake = 2        # news searches allowed per check, when budget allows

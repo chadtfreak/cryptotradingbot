@@ -12,6 +12,17 @@ https://github.com/chadtfreak/cryptotradingbot
 
 **2. Install it.** Open **Chad's Apps**, click **Survival Bot**, then **Install**. When it's done, the icon appears on your home screen. Click it to open the dashboard.
 
+## Give Claude its API key
+
+Claude needs an Anthropic API key to think. It's billed separately from a Claude subscription.
+
+1. Go to **console.anthropic.com**, sign up, and add a card under **Billing**.
+2. Under **Limits**, set a monthly spend limit of **$15**. The bot has its own $15 cap, so this is a second safety net.
+3. Under **API keys**, create a key and copy it. It starts with `sk-ant-`.
+4. Open the Survival Bot dashboard, paste the key into the **Anthropic API key** box under **Claude's brain**, and click **Save key**.
+
+The key is stored only on your Umbrel. It never goes to GitHub, and the dashboard never shows it again. Claude takes its first look at the market within a minute.
+
 ## Moving over from the terminal version
 
 If you already ran the bot with the terminal commands, this copies its history into the app so it carries on the same life instead of being born again.

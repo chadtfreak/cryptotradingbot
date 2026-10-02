@@ -41,9 +41,16 @@ def main() -> None:
             raise SystemExit("Refusing to listen on a public address without DASHBOARD_PASSWORD set.")
         if password == "change-me":
             raise SystemExit("Set your own DASHBOARD_PASSWORD (in docker-compose.yml) instead of change-me.")
-        engine = Engine(settings, KrakenMarket(settings.bot.pair), Store(settings.bot.db_path))
+        maths = Engine(settings, KrakenMarket(settings.bot.pair), Store(settings.bot.db_path))
+        engines = {"maths": maths}
+        if settings.claude.enabled:
+            from .claude_brain import ClaudeBrain
+
+            brain = ClaudeBrain(settings)
+            brain.rival = maths
+            engines = {"claude": Engine(settings, KrakenMarket(settings.bot.pair), Store(settings.claude.db_path), brain=brain), **engines}
         print(f"Dashboard: http://{args.host}:{args.port}")
-        uvicorn.run(create_app(engine), host=args.host, port=args.port, log_level="warning")
+        uvicorn.run(create_app(engines), host=args.host, port=args.port, log_level="warning")
 
     elif args.cmd == "backtest":
         from .backtest import run_backtest
@@ -56,9 +63,10 @@ def main() -> None:
         print(run_backtest(candles, settings).report())
 
     elif args.cmd == "reset":
-        db = Path(settings.bot.db_path)
-        if db.exists() and input(f"Delete {db} and all trade history? Type yes: ") == "yes":
-            db.unlink()
+        dbs = [p for p in (Path(settings.bot.db_path), Path(settings.claude.db_path)) if p.exists()]
+        if dbs and input(f"Delete {', '.join(map(str, dbs))} and all history? Type yes: ") == "yes":
+            for db in dbs:
+                db.unlink()
             print("Done. The next `python -m bot run` starts a new life.")
 
 

@@ -14,6 +14,8 @@ A crypto trading bot with its own USDT wallet that has to earn its keep. It pays
 | Control | Fully autonomous, with a kill switch on the dashboard |
 | Survival rule | Running costs are paid from the bot's balance before anything counts as profit. Below $50 it dies. |
 | Hosting | Your Umbrel at home. The bot charges itself $1 a month as its share of the power bill. |
+| The trader | Claude, via the Anthropic API. It pays for its own thinking out of its balance, capped at $15 a month. |
+| The rival | The original maths bot keeps paper trading alongside Claude, with its own $100, as a benchmark. |
 
 ## The honest maths
 
@@ -29,9 +31,43 @@ So the strategy wasn't the main problem at this size. The rent was.
 
 **Decision:** run it on the Umbrel and drop running costs to $1 a month. The same backtest then finishes at **+16.7%** (costs $3.67 instead of $22), and if it made nothing at all it would take about 4 years to hit the floor.
 
+## Claude as the trader
+
+The idea: not just a formula, but a Claude agent that trades, learns and fights to stay alive.
+
+**What it can and can't do.** Nobody can promise top 0.01% results, and Claude has no proven edge in markets. What it brings is judgement across the whole picture (both timeframes, BTC, sentiment, news), discipline, and an honest record of why it did what it did. The maths bot running alongside it, plus buy and hold, tells us whether that's worth paying for.
+
+**How it decides when to think.** Code watches the market every minute for free. Claude is only woken when something is worth a decision:
+
+- a 20/50 EMA crossover on the 4h chart
+- a 3% move since its last check
+- price within one ATR of its stop
+- its own scheduled check-in (it chooses 2 to 48 hours ahead, default daily)
+
+**How it pays for itself.** Every call is priced from the API's usage numbers and charged to the bot's own balance. A hard cap of $15 a month sits on top. It changes how it thinks as money gets tight:
+
+| Mode | When | Model | News search |
+|---|---|---|---|
+| Sharp | Health 60%+ and spending on pace | Opus 5.5 | up to 2 per check |
+| Lean | Otherwise | Sonnet 5.5 | none |
+| Survival | Health under 25% or under $2 of budget left | Sonnet 5.5, only for real events | none |
+| Asleep | Under $0.50 of budget left | none until next month | coded stops still work |
+
+Health is how far equity sits between the $50 floor (0%) and the $100 start (100%). A check costs roughly 3 to 13 cents, so a normal month should land around $5 to $8.
+
+**How it learns.** Every decision is stored with its reasoning and a note to its future self. Once a week it reviews its decisions, its trades, and how it went against the maths bot and buy and hold, then rewrites a short "lessons learned" note that it reads before every decision.
+
+**What it can't override.** Code enforces these for every decision:
+
+- a stop 1% to 15% below price on every buy
+- at most 3% of equity lost if a stop is hit
+- 4 trades a day at most, and no adding to a position
+- stops only move up
+- the 5% daily loss limit and the $50 floor
+
 ## Stages
 
-### Stage 1: paper trading (built)
+### Stage 1: paper trading (built, Claude added in version 1.1)
 
 - Live ETH/USDT prices from Kraken's public API
 - Trend following strategy: EMA 20/50 crossover entries, trailing ATR stop, 2% risk per trade, spot only, no leverage

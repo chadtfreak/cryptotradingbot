@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS ledger (
 CREATE TABLE IF NOT EXISTS equity (
     ts INTEGER PRIMARY KEY, equity REAL NOT NULL, cash REAL NOT NULL, qty REAL NOT NULL, price REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS decisions (
+    id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL, model TEXT, wake_reason TEXT,
+    action TEXT, confidence TEXT, reasoning TEXT, journal TEXT, cost REAL NOT NULL DEFAULT 0, price REAL
+);
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, level TEXT NOT NULL, message TEXT NOT NULL
 );
@@ -69,6 +73,13 @@ class Store:
     def add_equity(self, ts: int, equity: float, cash: float, qty: float, price: float) -> None:
         self._exec("INSERT OR REPLACE INTO equity (ts, equity, cash, qty, price) VALUES (?,?,?,?,?)", (ts, equity, cash, qty, price))
 
+    def add_decision(self, ts: int, kind: str, model: str, wake_reason: str, action: str | None,
+                     confidence: str | None, reasoning: str, journal: str | None, cost: float, price: float | None) -> None:
+        self._exec(
+            "INSERT INTO decisions (ts, kind, model, wake_reason, action, confidence, reasoning, journal, cost, price) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (ts, kind, model, wake_reason, action, confidence, reasoning, journal, cost, price),
+        )
+
     # Queries
     def trades(self, limit: int = 1000) -> list[dict]:
         return self._rows("SELECT * FROM trades ORDER BY ts DESC, id DESC LIMIT ?", (limit,))
@@ -81,3 +92,11 @@ class Store:
 
     def ledger_total(self, kind: str) -> float:
         return self._rows("SELECT COALESCE(SUM(amount), 0) AS t FROM ledger WHERE kind = ?", (kind,))[0]["t"]
+
+    def ledger_total_since(self, kind: str, since: int) -> float:
+        return self._rows("SELECT COALESCE(SUM(amount), 0) AS t FROM ledger WHERE kind = ? AND ts >= ?", (kind, since))[0]["t"]
+
+    def decisions(self, limit: int = 50, kind: str | None = None, since: int = 0) -> list[dict]:
+        if kind:
+            return self._rows("SELECT * FROM decisions WHERE kind = ? AND ts >= ? ORDER BY id DESC LIMIT ?", (kind, since, limit))
+        return self._rows("SELECT * FROM decisions WHERE ts >= ? ORDER BY id DESC LIMIT ?", (since, limit))

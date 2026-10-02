@@ -46,11 +46,37 @@ class SurvivalSettings:
 
 
 @dataclass
+class GuardrailSettings:
+    """Hard limits in code. No brain, maths or Claude, can override these."""
+    max_risk_per_trade: float = 0.03  # max loss if the stop is hit, as a share of equity
+    min_stop_distance_pct: float = 1.0
+    max_stop_distance_pct: float = 15.0
+    max_trades_per_day: int = 4
+
+
+@dataclass
+class ClaudeSettings:
+    enabled: bool = True
+    db_path: str = "data/claude.db"
+    monthly_budget_usd: float = 15.0
+    smart_model: str = "claude-opus-5-5"
+    lean_model: str = "claude-sonnet-5-5"
+    review_model: str = "claude-opus-5-5"
+    heartbeat_hours: float = 24.0
+    move_trigger_pct: float = 3.0
+    min_minutes_between_wakes: int = 60
+    review_every_days: int = 7
+    web_searches_per_wake: int = 2
+
+
+@dataclass
 class Settings:
     bot: BotSettings = field(default_factory=BotSettings)
     strategy: StrategySettings = field(default_factory=StrategySettings)
     costs: CostSettings = field(default_factory=CostSettings)
     survival: SurvivalSettings = field(default_factory=SurvivalSettings)
+    guardrails: GuardrailSettings = field(default_factory=GuardrailSettings)
+    claude: ClaudeSettings = field(default_factory=ClaudeSettings)
 
 
 def _fill(cls, data: dict):
@@ -71,6 +97,8 @@ def load_settings(path: str | Path = "config.toml") -> Settings:
         strategy=_fill(StrategySettings, raw.get("strategy", {})),
         costs=_fill(CostSettings, raw.get("costs", {})),
         survival=_fill(SurvivalSettings, raw.get("survival", {})),
+        guardrails=_fill(GuardrailSettings, raw.get("guardrails", {})),
+        claude=_fill(ClaudeSettings, raw.get("claude", {})),
     )
     if settings.bot.mode != "paper":
         raise ValueError("Only mode = \"paper\" is supported in this version.")

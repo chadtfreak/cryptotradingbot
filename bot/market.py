@@ -30,9 +30,9 @@ class KrakenMarket:
             raise RuntimeError(f"Kraken error: {body['error']}")
         return body["result"]
 
-    def candles(self, interval_minutes: int) -> list[Candle]:
+    def candles(self, interval_minutes: int, pair: str | None = None) -> list[Candle]:
         """Closed candles only, oldest first (Kraken returns up to 720)."""
-        result = self._get("OHLC", {"pair": self.pair, "interval": interval_minutes})
+        result = self._get("OHLC", {"pair": pair or self.pair, "interval": interval_minutes})
         rows = next(v for k, v in result.items() if k != "last")
         candles = [
             Candle(int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[6]))
@@ -50,5 +50,15 @@ class KrakenMarket:
         try:
             result = self._get("Ticker", {"pair": "USDTAUD"})
             return float(next(iter(result.values()))["c"][0])
+        except Exception:
+            return None
+
+    def fear_greed(self) -> tuple[int, str] | None:
+        """Crypto Fear & Greed Index (0 = extreme fear, 100 = extreme greed)."""
+        try:
+            resp = self.client.get("https://api.alternative.me/fng/", params={"limit": 1})
+            resp.raise_for_status()
+            d = resp.json()["data"][0]
+            return int(d["value"]), d["value_classification"]
         except Exception:
             return None

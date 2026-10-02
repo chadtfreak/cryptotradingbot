@@ -237,19 +237,19 @@ def test_web_endpoints(monkeypatch):
     client = TestClient(create_app(engine, run_loop=False))
     assert client.get("/").status_code == 200
     assert client.get("/static/chart.umd.min.js").status_code == 200
-    assert client.get("/api/status").json()["position"] is not None
-    assert len(client.get("/api/trades").json()) == 1
-    csv = client.get("/api/trades.csv").text
+    assert client.get("/api/maths/status").json()["position"] is not None
+    assert len(client.get("/api/maths/trades").json()) == 1
+    csv = client.get("/api/maths/trades.csv").text
     assert "usdt_aud_rate" in csv and "buy" in csv
-    assert client.post("/api/kill").json()["status"] == STOPPED
+    assert client.post("/api/maths/kill").json()["status"] == STOPPED
 
 
 def test_web_password(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PASSWORD", "hunter2")
     engine, *_ = make_engine([100] * 60)
     client = TestClient(create_app(engine, run_loop=False))
-    assert client.get("/api/status").status_code == 401
-    assert client.get("/api/status", auth=("me", "hunter2")).status_code == 200
+    assert client.get("/api/maths/status").status_code == 401
+    assert client.get("/api/maths/status", auth=("me", "hunter2")).status_code == 200
 
 
 # Umbrel packaging

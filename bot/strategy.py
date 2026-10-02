@@ -23,6 +23,7 @@ class Decision:
     action: str  # "buy", "sell" or "hold"
     reason: str
     stop: float | None = None
+    size_usd: float | None = None  # None means size by the risk rule
 
 
 @dataclass
