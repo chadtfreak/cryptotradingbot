@@ -31,6 +31,8 @@ jobs:
     needs: test
     if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - id: version
@@ -51,3 +53,32 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
             ghcr.io/${{ github.repository }}:latest
+
+  # Only once the image is published, point the Umbrel app at it. Umbrel reads the app files
+  # straight away, so bumping them earlier makes it try to download an image that isn't there yet.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Point the Umbrel app at the new image
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          current=$(sed -n 's/^version: "\(.*\)"$/\1/p' chad-survival-bot/umbrel-app.yml)
+          newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)
+          if [ "$current" = "$VERSION" ] || [ "$newest" != "$VERSION" ]; then
+            echo "Umbrel app already on $current, nothing to do."
+            exit 0
+          fi
+          sed -i "s/^version: \".*\"$/version: \"$VERSION\"/" chad-survival-bot/umbrel-app.yml
+          sed -i "s|ghcr.io/${{ github.repository }}:.*|ghcr.io/${{ github.repository }}:$VERSION|" chad-survival-bot/docker-compose.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $VERSION to the Umbrel app store"
+          for i in 1 2 3; do git push && exit 0; git pull --rebase; done
+          exit 1

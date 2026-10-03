@@ -52,7 +52,7 @@ You'll get the green heartbeat icon on your phone, and it opens full screen like
 
 ## Updates
 
-When I push a new version, Umbrel shows an update for Survival Bot. Click **Update** and its history carries over.
+When I push a new version, GitHub builds it first (about 3 minutes) and only then tells Umbrel about it, so the update never shows up before it can be downloaded. Umbrel then shows an update for Survival Bot. Click **Update** and its history carries over.
 
 ## Handy terminal commands
 

@@ -262,14 +262,17 @@ def test_web_password(monkeypatch):
 # Umbrel packaging
 
 def test_umbrel_versions_match():
+    """The Umbrel app and its image tag move together. VERSION can be ahead of them: the
+    build publishes that image first, then points the Umbrel app at it."""
     import re
     from pathlib import Path
 
-    version = Path("VERSION").read_text().strip()
+    version = tuple(int(x) for x in Path("VERSION").read_text().strip().split("."))
     manifest = Path("chad-survival-bot/umbrel-app.yml").read_text()
     compose = Path("chad-survival-bot/docker-compose.yml").read_text()
-    assert re.search(r'^version: "(.+)"$', manifest, re.M).group(1) == version
-    assert f"ghcr.io/chadtfreak/cryptotradingbot:{version}" in compose
+    released = re.search(r'^version: "(.+)"$', manifest, re.M).group(1)
+    assert f"ghcr.io/chadtfreak/cryptotradingbot:{released}" in compose
+    assert tuple(int(x) for x in released.split(".")) <= version
 
 
 def test_icons_served_without_password(monkeypatch):
