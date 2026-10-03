@@ -32,20 +32,20 @@ class PaperBroker:
 
     live = False
 
-    def buy(self, notional: float, market_price: float, reduce_only: bool = False) -> Fill:
+    def buy(self, notional: float, market_price: float, reduce_only: bool = False, coin: str | None = None) -> Fill:
         price = market_price * (1 + self.costs.slippage_pct / 100)
         return Fill("buy", notional / price, price, notional, notional * self.costs.pool_fee_pct / 100, self.costs.gas_per_swap_usd)
 
-    def buy_qty(self, qty: float, market_price: float, reduce_only: bool = True) -> Fill:
+    def buy_qty(self, qty: float, market_price: float, reduce_only: bool = True, coin: str | None = None) -> Fill:
         """Buy an exact quantity, used to close a short."""
         price = market_price * (1 + self.costs.slippage_pct / 100)
         notional = qty * price
         return Fill("buy", qty, price, notional, notional * self.costs.pool_fee_pct / 100, self.costs.gas_per_swap_usd)
 
-    def sell(self, qty: float, market_price: float, reduce_only: bool = False) -> Fill:
+    def sell(self, qty: float, market_price: float, reduce_only: bool = False, coin: str | None = None) -> Fill:
         price = market_price * (1 - self.costs.slippage_pct / 100)
         notional = qty * price
         return Fill("sell", qty, price, notional, notional * self.costs.pool_fee_pct / 100, self.costs.gas_per_swap_usd)
 
-    def sync_stop(self, qty: float, stop: float | None) -> None:
+    def sync_stop(self, qty: float, stop: float | None, coin: str | None = None) -> None:
         """Paper trading has no exchange; the engine checks stops itself."""

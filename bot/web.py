@@ -141,17 +141,46 @@ def create_app(engines: "dict[str, Engine] | Engine", run_loop: bool = True) -> 
             raise HTTPException(400, str(exc))
         return engines["claude"].summary()
 
+    @app.post("/api/claude/promotion")
+    async def promotion(body: dict = Body(...)):
+        engine = get("claude")
+        now = int(engine.clock())
+        try:
+            if body.get("approve"):
+                await asyncio.to_thread(engine.brain.career.approve, engine, now)
+            else:
+                engine.brain.career.decline(engine, now)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return engine.summary()
+
+    @app.post("/api/claude/practice")
+    async def practice(body: dict = Body(...)):
+        from .practice import PracticeRun
+
+        engine = get("claude")
+        key = engine.brain.api_key(engine)
+        if not key:
+            raise HTTPException(400, "Add your Anthropic API key first.")
+        if (engine.store.get("practice_status") or {}).get("state") == "running":
+            raise HTTPException(400, "A practice run is already going.")
+        n = int(body.get("scenarios") or 60)
+        if not 10 <= n <= 150:
+            raise HTTPException(400, "Choose between 10 and 150 scenarios.")
+        PracticeRun(engine.brain, engine.store, key, engine.market, scenarios=n).start()
+        return engine.summary()
+
     @app.get("/api/{bot}/trades.csv")
     def trades_csv(bot: str):
         engine = get(bot)
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["date_utc", "side", "asset", "qty", "price_usdt", "value_usdt", "fee_usdt", "gas_usdt",
+        w.writerow(["date_utc", "side", "coin", "qty", "price_usdt", "value_usdt", "fee_usdt", "gas_usdt",
                     "realised_pnl_usdt", "usdt_aud_rate", "value_aud", "realised_pnl_aud", "reason"])
         for t in reversed(engine.store.trades(100000)):
             rate = t["usd_aud"]
             w.writerow([
-                datetime.fromtimestamp(t["ts"], timezone.utc).isoformat(), t["side"], engine.s.bot.asset,
+                datetime.fromtimestamp(t["ts"], timezone.utc).isoformat(), t["side"], t.get("coin") or engine.s.bot.asset,
                 f"{t['qty']:.8f}", f"{t['price']:.2f}", f"{t['notional']:.2f}", f"{t['fee']:.4f}", f"{t['gas']:.4f}",
                 "" if t["pnl"] is None else f"{t['pnl']:.4f}", rate or "",
                 f"{t['notional'] * rate:.2f}" if rate else "",

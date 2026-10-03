@@ -19,6 +19,7 @@ def usage(inp=5000, out=1500, searches=0):
 
 
 def tool_reply(name, data, model="claude-opus-5-5", stop="tool_use", **u):
+    name = "submit_decisions" if name == "submit_decision" else name
     block = SimpleNamespace(type="tool_use", name=name, input=data, id="t1")
     return SimpleNamespace(content=[SimpleNamespace(type="text", text="thinking out loud"), block],
                            stop_reason=stop, model=model, usage=usage(**u))
@@ -40,13 +41,18 @@ class FakeClaude:
         return reply
 
 
-def decision(action="hold", pct=None, stop=None, hours=24, confidence="medium", sell_pct=None):
-    return {"action": action, "position_pct": pct, "sell_pct": sell_pct, "stop_price": stop, "confidence": confidence,
-            "reasoning": f"Test reasoning for {action}.", "journal": "Expect X.", "next_check_hours": hours}
+def decision(action="hold", pct=None, stop=None, hours=24, confidence="medium", sell_pct=None, coin="ETH", close_pct=None, setup="breakout"):
+    actions = []
+    if action != "hold":
+        act = {"buy": "long", "sell": "close", "raise_stop": "set_stop"}.get(action, action)
+        actions.append({"action": act, "coin": coin, "position_pct": pct, "close_pct": close_pct or sell_pct,
+                        "stop_price": stop, "setup": setup})
+    return {"actions": actions, "confidence": confidence, "reasoning": f"Test reasoning for {action}.",
+            "journal": "Expect X.", "next_check_hours": hours}
 
 
 class MarketPlus(FakeMarket):
-    def candles(self, interval, pair=None):
+    def candles(self, interval, coin=None, pair=None, count=300):
         return self._candles
 
     def fear_greed(self):
@@ -110,7 +116,7 @@ def test_buy_goes_through_guardrails():
     assert t["side"] == "buy"
     # Stop 5% below: 3% max risk means at most 60% of equity, not the 90% asked for
     assert t["notional"] == pytest.approx(0.03 * eng.equity(100) / 0.05, rel=0.02)
-    assert eng.store.get("stop") == 95
+    assert (eng.position() or {}).get("stop") == 95
     assert any("trimmed" in e["message"] for e in eng.store.events())
 
 
@@ -118,7 +124,7 @@ def test_buy_without_valid_stop_is_rejected():
     eng, fake, *_ = make([tool_reply("submit_decision", decision("buy", pct=50, stop=99.9))])
     eng.tick()
     assert eng.store.trades() == []
-    assert any("Guardrail: buy rejected" in e["message"] for e in eng.store.events())
+    assert any("buy rejected" in e["message"] for e in eng.store.events())
 
 
 def test_stop_can_only_move_up():
@@ -132,7 +138,7 @@ def test_stop_can_only_move_up():
         clock.t += 25 * H  # past the heartbeat
         eng.store.set("claude_next_check_ts", None)
         eng.tick()
-    assert eng.store.get("stop") == 97
+    assert (eng.position() or {}).get("stop") == 97
     assert any("can only be tightened" in e["message"] for e in eng.store.events())
 
 
@@ -284,15 +290,15 @@ def test_full_send_big_size_add_partial_sell_and_lower_stop():
     first = eng.store.trades()[0]
     assert first["notional"] == pytest.approx(50, rel=0.02)
     wake_again(eng, clock)
-    assert len(eng.store.trades()) == 2 and eng.store.get("stop") == 92
+    assert len(eng.store.trades()) == 2 and (eng.position() or {}).get("stop") == 92
     held = eng.qty
     wake_again(eng, clock)
-    assert eng.store.get("stop") == 85
+    assert (eng.position() or {}).get("stop") == 85
     wake_again(eng, clock)
     assert eng.qty == pytest.approx(held / 2)
     last = eng.store.trades()[0]
     assert last["side"] == "sell" and last["pnl"] is not None
-    assert eng.store.get("cost_basis") > 0
+    assert eng.position()["cost_basis"] > 0
 
 
 def test_full_send_has_no_daily_loss_limit_or_trade_cap():
@@ -331,10 +337,10 @@ def test_risk_cap_limits_full_send_losses():
 def test_short_profits_when_price_falls():
     eng, fake, market, clock = make([
         tool_reply("submit_decision", decision("short", pct=40, stop=110)),
-        tool_reply("submit_decision", {**decision("close"), "close_pct": 100}),
+        tool_reply("submit_decision", decision("close", close_pct=100)),
     ], guardrails=full_send())
     eng.tick()
-    assert eng.qty < 0 and eng.store.get("stop") == 110
+    assert eng.qty < 0 and (eng.position() or {}).get("stop") == 110
     assert eng.cash > 100  # sale proceeds sit in cash
     assert 99.7 < eng.equity(100) < 100  # only thinking cost, fees and slippage lost so far
     market.set(price=90)

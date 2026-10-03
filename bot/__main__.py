@@ -22,6 +22,7 @@ def main() -> None:
     bt = sub.add_parser("backtest", help="replay the strategy over recent history")
     bt.add_argument("--interval", type=int, help="candle size in minutes (default: from config)")
     sub.add_parser("reset", help="delete all bot data and start again")
+    sub.add_parser("research", help="backtest the playbook setups on Hyperliquid history and update Claude's stats")
     args = parser.parse_args()
 
     settings = load_settings(args.config)
@@ -30,7 +31,7 @@ def main() -> None:
         import uvicorn
 
         from .engine import Engine
-        from .market import KrakenMarket
+        from .market import HyperliquidMarket
         from .store import Store
         from .web import create_app
 
@@ -41,7 +42,7 @@ def main() -> None:
             raise SystemExit("Refusing to listen on a public address without DASHBOARD_PASSWORD set.")
         if password == "change-me":
             raise SystemExit("Set your own DASHBOARD_PASSWORD (in docker-compose.yml) instead of change-me.")
-        maths = Engine(settings, KrakenMarket(settings.bot.pair), Store(settings.bot.db_path))
+        maths = Engine(settings, HyperliquidMarket(settings.bot.asset), Store(settings.bot.db_path))
         engines = {"maths": maths}
         if settings.claude.enabled:
             from .venues import build_claude
@@ -59,6 +60,11 @@ def main() -> None:
         candles = KrakenMarket(settings.bot.pair).candles(settings.bot.interval_minutes)
         print(f"{settings.bot.pair}, {settings.bot.interval_minutes} minute candles, {len(candles)} candles from Kraken\n")
         print(run_backtest(candles, settings).report())
+
+    elif args.cmd == "research":
+        from .research import main as research_main
+
+        research_main()
 
     elif args.cmd == "reset":
         dbs = [p for p in (Path(settings.bot.db_path), Path(settings.claude.db_path)) if p.exists()]

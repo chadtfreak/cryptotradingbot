@@ -98,6 +98,18 @@
   td.reason { white-space: normal; min-width: 260px; color: var(--muted); }
   .empty { color: var(--muted); padding: 12px 0; }
   .banner { display: none; background: color-mix(in srgb, var(--bad) 12%, var(--panel)); border: 1px solid var(--bad); color: var(--ink); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  .career { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+  .career-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .offer { background: color-mix(in srgb, var(--good) 12%, var(--panel)); border: 1px solid var(--good); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+  .offer .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  button.go { background: var(--good); border-color: var(--good); color: #fff; }
+  .pill.probation { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  .pill.level { background: var(--claude-soft); color: var(--claude); }
+  .practice-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+  .practice-form input { width: 90px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+  table.compact th, table.compact td { padding: 8px 6px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -139,6 +151,14 @@
       <div class="msg" id="keymsg"></div>
     </div>
     <div style="text-align:right"><a href="#" id="keychange" class="sub hidden">Change API key</a></div>
+    <div class="career" id="career">
+      <div class="label"><strong>Career</strong> <span id="level" class="pill level">-</span> <span id="probation" class="pill probation hidden">probation</span></div>
+      <div class="career-grid" style="margin-top:8px">
+        <div><div class="label sub">This month's thinking allowance</div><div class="value" id="allowance">-</div><div class="sub" id="allowance-why"></div></div>
+        <div><div class="label sub">Next promotion</div><div class="value" id="nextlevel">-</div><div class="sub">30 days of at least +10%, beating the maths bot and holding ETH, with 5+ closed trades. You approve it.</div></div>
+      </div>
+      <div class="offer hidden" id="offer"></div>
+    </div>
     <div class="venue">
       <div class="label"><strong>Where Claude trades</strong> <span id="venuepill" class="pill paper">paper</span> <a href="#" id="venuechange" class="sub">Change</a></div>
       <div class="sub" id="venueinfo"></div>
@@ -170,7 +190,22 @@
 
   <section class="grid main">
     <div class="card"><h2>Equity</h2><div class="chartbox"><canvas id="chart"></canvas></div></div>
-    <div class="card"><h2>Position</h2><div id="position"></div></div>
+    <div class="card"><h2>Positions</h2><div id="position"></div></div>
+  </section>
+
+  <section class="split hidden" id="claude-extra">
+    <div class="card"><h2>Market scanner</h2><div class="sub" style="margin-bottom:8px">The coins Claude finds most interesting right now, out of every coin trading over $50M a day. &#9650; means it just broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate.</div><div class="tablewrap" id="scanner"></div></div>
+    <div class="card">
+      <h2>Practice run</h2>
+      <div class="sub">Claude trades 60 random moments from the last two years with the coin and dates hidden, then gets marked on what actually happened and writes up its lessons. Costs about $4 to $8 of Anthropic credit, billed to your Anthropic account, not the bot.</div>
+      <div class="practice-form" id="practice-form">
+        <input id="practice-n" type="number" min="10" max="150" value="60" aria-label="Number of scenarios">
+        <span class="sub">moments</span>
+        <button id="practice-go">Start practice run</button>
+      </div>
+      <div class="msg" id="practice-msg"></div>
+      <div class="lessons sub" id="practice-lessons" style="margin-top:10px"></div>
+    </div>
   </section>
 
   <section class="grid main">
@@ -188,6 +223,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const usd = (n, sign = false) => n == null ? "-" : (sign && n > 0 ? "+" : "") + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const px = (n) => n == null ? "-" : n >= 1000 ? usd(n) : n.toPrecision(5);
 const pct = (n) => n == null ? "-" : (n > 0 ? "+" : "") + n.toFixed(1) + "%";
 const when = (ts) => ts ? new Date(ts * 1000).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "-";
 const tone = (el, n) => { el.classList.toggle("good", n > 0); el.classList.toggle("bad", n < 0); };
@@ -233,7 +269,9 @@ function renderStatus(s) {
   $("mode").textContent = s.mode;
   $("status").textContent = s.status;
   $("status").className = "pill " + s.status;
-  $("subtitle").textContent = `${s.label}: ${s.pair} on ${s.interval_minutes / 60}h candles${s.price ? `, last price ${usd(s.price)}` : ""}. Born ${when(s.started_at)}.`;
+  $("subtitle").textContent = s.max_positions > 1
+    ? `${s.label}: trades any coin doing over $50M a day, up to ${s.max_positions} at once. Born ${when(s.started_at)}.`
+    : `${s.label}: ${s.asset} on ${s.interval_minutes / 60}h candles${s.price ? `, last price ${usd(s.price)}` : ""}. Born ${when(s.started_at)}.`;
   $("csv").href = `api/${s.bot}/trades.csv`;
   $("equity").textContent = usd(s.equity);
   $("equity-note").textContent = `started with ${usd(s.starting_balance)} USDC`;
@@ -255,18 +293,17 @@ function renderStatus(s) {
   banner.style.display = msg ? "block" : "none";
   banner.textContent = msg;
 
-  const p = s.position;
-  const fr = s.funding_rate == null ? "" : `<dt>Funding now</dt><dd>${(s.funding_rate * 100).toFixed(4)}%/h</dd>`;
-  $("position").innerHTML = !p ? `<div class="empty">Holding ${usd(s.cash)} USDC, no open position.</div>${fr ? `<dl>${fr}</dl>` : ""}` : `
-    <dl>
-      <dt>Side</dt><dd><strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong></dd>
-      <dt>Size</dt><dd>${Math.abs(p.qty).toFixed(5)} ${esc(s.asset)} (${usd(Math.abs(p.qty) * s.price)})</dd>
-      <dt>Entry</dt><dd>${usd(Math.abs(p.cost_basis / p.qty))}</dd>
-      <dt>Unrealised</dt><dd class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}</dd>
-      <dt>Stop</dt><dd>${usd(p.stop)}</dd>
-      <dt>Funding ${s.funding_paid >= 0 ? "paid" : "earned"}</dt><dd>${usd(Math.abs(s.funding_paid))}</dd>
-      ${fr}
-    </dl>`;
+  const ps = s.positions || [];
+  const fr = s.funding_rate == null || ps.length ? "" : `<dl><dt>Funding now</dt><dd>${(s.funding_rate * 100).toFixed(4)}%/h</dd></dl>`;
+  const fund = s.funding_paid ? `<div class="sub" style="margin-top:8px">Funding ${s.funding_paid >= 0 ? "paid" : "earned"} so far: ${usd(Math.abs(s.funding_paid))}</div>` : "";
+  $("position").innerHTML = !ps.length ? `<div class="empty">Holding ${usd(s.cash)} USDC, no open positions.</div>${fr}${fund}` : `
+    <div class="tablewrap"><table class="compact"><thead><tr><th>Coin</th><th>Value</th><th>Entry</th><th>Stop</th><th>P&amp;L</th></tr></thead><tbody>${
+      ps.map((p) => `<tr title="${esc(p.setup || "")}">
+        <td><strong>${esc(p.coin)}</strong> <strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong>${p.setup ? `<br><span class="sub">${esc(p.setup.replace("_", " "))}</span>` : ""}</td>
+        <td>${usd(p.value)}</td><td>${px(p.entry)}</td><td>${px(p.stop)}</td>
+        <td class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}</td></tr>`).join("")
+    }</tbody></table></div>
+    <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.</div>${fund}`;
   renderBrain(s.brain);
 }
 
@@ -280,6 +317,7 @@ const TIER_TEXT = {
 function renderBrain(b) {
   $("brain").classList.toggle("hidden", !b);
   $("lessons-card").classList.toggle("hidden", !b);
+  $("claude-extra").classList.toggle("hidden", !b);
   if (!b) return;
   $("tier").textContent = b.tier || "-";
   $("tier").className = "pill " + (b.tier || "");
@@ -318,6 +356,67 @@ function renderBrain(b) {
   $("mainnetopt").classList.toggle("hidden", !b.allow_mainnet);
   $("lessons-meta").textContent = b.lessons_updated ? `Last rewritten in its weekly review, ${when(b.lessons_updated)}` : "Claude reviews its own decisions once a week and writes its lessons here.";
   $("lessons").textContent = b.lessons || "";
+  renderCareer(b.career);
+  renderScanner(b.scanner || []);
+  renderPractice(b);
+}
+
+function renderCareer(c) {
+  $("career").classList.toggle("hidden", !c);
+  if (!c) return;
+  $("level").textContent = c.level;
+  $("probation").classList.toggle("hidden", !c.probation);
+  $("probation").title = "Two losing months in a row: half risk per trade and one position at a time until a winning month.";
+  $("allowance").textContent = `$${c.allowance.amount.toFixed(2)}${c.allowance.smart ? "" : ", cheaper model only"}`;
+  $("allowance-why").textContent = c.allowance.why;
+  $("nextlevel").textContent = c.next_level ? `${c.next_level} (+$${c.next_amount} bankroll)` : "Top of the ladder";
+  const o = c.offer;
+  $("offer").classList.toggle("hidden", !o);
+  if (o) {
+    const st = o.stats || {};
+    $("offer").innerHTML = `<strong>Claude has earned a promotion to ${esc(o.name)}.</strong>
+      <div class="sub">${pct(st.return)} over 30 days (maths bot ${pct(st.maths)}, holding ETH ${pct(st.hold)}) across ${st.trades ?? "-"} closed trades.
+      Approving adds $${o.amount} to its bankroll.</div>
+      <div class="row"><button class="go" id="promo-yes">Approve +$${o.amount}</button><button id="promo-no">Not yet</button></div>
+      <div class="msg" id="promo-msg"></div>`;
+    $("promo-yes").onclick = () => promotion(true);
+    $("promo-no").onclick = () => promotion(false);
+  }
+}
+
+async function promotion(approve) {
+  if (approve && !confirm("Approve the promotion and add to Claude's bankroll?")) return;
+  try {
+    renderStatus(await api("api/claude/promotion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approve }) }));
+    refresh();
+  } catch (e) {
+    $("promo-msg").textContent = e.message;
+    $("promo-msg").className = "msg bad";
+  }
+}
+
+function renderScanner(rows) {
+  if (!rows.length) { $("scanner").innerHTML = `<div class="empty">Scans the market hourly once Claude is awake.</div>`; return; }
+  $("scanner").innerHTML = `<table class="compact"><thead><tr><th>Coin</th><th>Price</th><th>24h</th><th>Trend</th><th>Funding</th><th>Vol</th></tr></thead><tbody>${
+    rows.map((r) => `<tr>
+      <td><strong>${esc(r.coin)}</strong>${r.breakout ? ` <span class="good" title="Closed above its 20-day high">&#9650;</span>` : r.breakdown ? ` <span class="bad" title="Closed below its 20-day low">&#9660;</span>` : ""}</td>
+      <td>${px(r.price)}</td><td class="${r.ch_24h > 0 ? "good" : r.ch_24h < 0 ? "bad" : ""}">${pct(r.ch_24h)}</td>
+      <td>${esc(r.trend)}</td><td>${r.funding_apr == null ? "-" : r.funding_apr.toFixed(0) + "%/yr"}</td><td>$${r.volume_m >= 1000 ? (r.volume_m / 1000).toFixed(1) + "B" : Math.round(r.volume_m) + "M"}</td></tr>`).join("")
+  }</tbody></table>`;
+}
+
+function renderPractice(b) {
+  const p = b.practice;
+  const running = p && p.state === "running";
+  $("practice-go").disabled = running || !b.key_set;
+  $("practice-go").textContent = p && p.state === "done" ? "Run another" : "Start practice run";
+  let msg = !b.key_set ? "Add an Anthropic API key first." : "";
+  if (running) msg = `${esc(p.message || "Working")}: ${p.done || 0} of ${p.total} moments, $${(p.cost || 0).toFixed(2)} spent so far.`;
+  else if (p && p.state === "done") msg = `Finished ${when(p.finished)}, cost $${(p.cost || 0).toFixed(2)}. ${esc(p.message || "")}`;
+  else if (p && p.state === "failed") msg = `Last run failed: ${esc(p.message)}`;
+  $("practice-msg").innerHTML = msg;
+  $("practice-msg").className = "msg" + (p && p.state === "failed" ? " bad" : "");
+  $("practice-lessons").textContent = b.practice_lessons ? "What it learned in practice:\n" + b.practice_lessons : "";
 }
 let showKeyForm = false;
 
@@ -350,9 +449,9 @@ function renderChart(points) {
 
 function renderTrades(trades) {
   if (!trades.length) { $("trades").innerHTML = `<div class="empty">No trades yet.</div>`; return; }
-  $("trades").innerHTML = `<table><thead><tr><th>When</th><th>Side</th><th>Qty</th><th>Price</th><th>Value</th><th>P&amp;L</th><th>Why</th></tr></thead><tbody>${
+  $("trades").innerHTML = `<table><thead><tr><th>When</th><th>Coin</th><th>Side</th><th>Qty</th><th>Price</th><th>Value</th><th>P&amp;L</th><th>Why</th></tr></thead><tbody>${
     trades.map((t) => `<tr>
-      <td>${when(t.ts)}</td><td>${t.side.toUpperCase()}</td><td>${t.qty.toFixed(5)}</td><td>${usd(t.price)}</td><td>${usd(t.notional)}</td>
+      <td>${when(t.ts)}</td><td>${esc(t.coin || "ETH")}</td><td>${t.side.toUpperCase()}</td><td>${t.qty.toPrecision(5)}</td><td>${px(t.price)}</td><td>${usd(t.notional)}</td>
       <td class="${t.pnl > 0 ? "good" : t.pnl < 0 ? "bad" : ""}">${t.pnl == null ? "" : usd(t.pnl, true)}</td>
       <td class="reason">${esc(t.reason)}</td></tr>`).join("")
   }</tbody></table>`;
@@ -401,6 +500,16 @@ $("venuesave").onclick = async () => {
   } catch (e) {
     $("venuemsg").textContent = e.message;
     $("venuemsg").className = "msg bad";
+  }
+};
+$("practice-go").onclick = async () => {
+  const n = parseInt($("practice-n").value, 10);
+  if (!confirm(`Run ${n} practice trades? This uses roughly $${(n * 0.1).toFixed(0)} of Anthropic credit (capped at $15), billed to your Anthropic account.`)) return;
+  try {
+    renderStatus(await api("api/claude/practice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenarios: n }) }));
+  } catch (e) {
+    $("practice-msg").textContent = e.message;
+    $("practice-msg").className = "msg bad";
   }
 };
 $("keychange").onclick = (e) => { e.preventDefault(); showKeyForm = true; refresh(); };

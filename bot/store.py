@@ -38,6 +38,10 @@ class Store:
         self.lock = threading.Lock()
         with self.lock:
             self.conn.executescript(SCHEMA)
+            cols = [r[1] for r in self.conn.execute("PRAGMA table_info(trades)")]
+            if "coin" not in cols:  # databases from before multi-coin trading
+                self.conn.execute("ALTER TABLE trades ADD COLUMN coin TEXT NOT NULL DEFAULT 'ETH'")
+                self.conn.commit()
 
     def close(self) -> None:
         with self.lock:
@@ -65,10 +69,10 @@ class Store:
     def log(self, message: str, level: str = "info", ts: int | None = None) -> None:
         self._exec("INSERT INTO events (ts, level, message) VALUES (?, ?, ?)", (ts or int(time.time()), level, message))
 
-    def add_trade(self, ts: int, fill, pnl: float | None, usd_aud: float | None, reason: str) -> None:
+    def add_trade(self, ts: int, fill, pnl: float | None, usd_aud: float | None, reason: str, coin: str = "ETH") -> None:
         self._exec(
-            "INSERT INTO trades (ts, side, qty, price, notional, fee, gas, pnl, usd_aud, reason) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (ts, fill.side, fill.qty, fill.price, fill.notional, fill.fee, fill.gas, pnl, usd_aud, reason),
+            "INSERT INTO trades (ts, side, qty, price, notional, fee, gas, pnl, usd_aud, reason, coin) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (ts, fill.side, fill.qty, fill.price, fill.notional, fill.fee, fill.gas, pnl, usd_aud, reason, coin),
         )
 
     def add_ledger(self, ts: int, kind: str, amount: float, note: str = "") -> None:

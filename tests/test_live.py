@@ -31,9 +31,9 @@ class FakeVenue:
 
     def state(self):
         value = self.balance + self.qty * (self.px - self.entry)
-        return AccountState(value, self.qty, self.entry if self.qty else None)
+        return AccountState(value, {"ETH": (self.qty, self.entry)} if self.qty else {})
 
-    def market(self, is_buy, qty, reduce_only):
+    def market(self, is_buy, qty, reduce_only, coin=None):
         if self.reject:
             raise VenueError(self.reject)
         qty = round(qty, 4)
@@ -52,13 +52,13 @@ class FakeVenue:
 
     leverage = 20
 
-    def set_leverage(self, leverage=1):
+    def set_leverage(self, leverage=1, coin=None):
         self.leverage = leverage
 
-    def cancel_stops(self):
+    def cancel_stops(self, coin=None):
         self.stops = []
 
-    def place_stop(self, qty, stop):
+    def place_stop(self, qty, stop, coin=None):
         self.stops.append((qty, stop))
         return 1
 
@@ -96,7 +96,7 @@ def test_long_places_real_order_and_exchange_stop():
     assert venue.orders[0][0] is True and venue.orders[0][2] is False
     assert venue.qty == pytest.approx(0.5, abs=0.001)
     assert venue.stops == [(pytest.approx(venue.qty), 95)]
-    assert eng.store.get("exchange_stop_ok") is True
+    assert eng.store.get("exchange_stops") == {"ETH": True}
     # Next tick reads the truth from the exchange
     venue.px = 110
     clock.t += 60
@@ -111,7 +111,7 @@ def test_exchange_stop_firing_is_picked_up():
     venue.fire_stop()  # happens on the exchange while the bot is busy or offline
     clock.t += 60
     eng.tick()
-    assert eng.qty == 0 and eng.store.get("stop") is None
+    assert eng.qty == 0 and eng.position() is None
     t = eng.store.trades()[0]
     assert t["pnl"] < 0 and "Closed on the exchange" in t["reason"]
     assert 96 < eng.equity(105) < 98  # lost about 5% of the $50 short, plus fees and thinking
@@ -120,7 +120,7 @@ def test_exchange_stop_firing_is_picked_up():
 def test_close_uses_reduce_only_and_clears_stop():
     eng, venue, clock = make_live([
         tool_reply("submit_decision", decision("long", pct=50, stop=95)),
-        tool_reply("submit_decision", {**decision("close"), "close_pct": 100}),
+        tool_reply("submit_decision", decision("close", close_pct=100)),
     ])
     eng.tick()
     clock.t += 2 * H
@@ -194,7 +194,7 @@ def test_switch_refused_with_open_position(tmp_path):
     s.claude.db_path = str(tmp_path / "claude.db")
     from bot.venues import build_claude
     eng = build_claude(s, None)
-    eng.store.set("qty", 0.5)
+    eng.store.set("positions", {"ETH": {"qty": 0.5, "cost_basis": 50.0, "stop": 90.0}})
     with pytest.raises(ValueError, match="Close Claude's position"):
         switch_venue(s, eng, {"name": "paper"})
 
@@ -242,8 +242,8 @@ def test_standard_account_reads_perps_value():
     assert account_state(info, "0xabc").account_value == 250.0
 
 
-def test_sets_exchange_leverage_to_1x_on_connect():
-    eng, venue, clock = make_live([tool_reply("submit_decision", decision("hold"))])
+def test_sets_exchange_leverage_to_1x_on_first_trade():
+    eng, venue, clock = make_live([tool_reply("submit_decision", decision("long", pct=30, stop=95))])
     eng.tick()
     assert venue.leverage == 1
     assert any("leverage for ETH to 1x" in e["message"] for e in eng.store.events())

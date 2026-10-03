@@ -41,6 +41,8 @@ allow_adding = false
 stops_only_up = true
 allow_short = false
 max_leverage = 1.0
+max_positions = 1
+min_volume_usd = 0               # ETH only
 
 [claude_guardrails]
 # Claude's hard limits: "full send". Only the $50 survival floor and the thinking budget really hold it back.
@@ -54,6 +56,8 @@ allow_adding = true              # can add to a position it already holds
 stops_only_up = false            # can move its stop up or down
 allow_short = true               # can bet on ETH falling
 max_leverage = 1.0               # never more exposure than its equity. Hard-coded safety, keep at 1.
+max_positions = 3                # up to 3 coins at once
+min_volume_usd = 50000000        # any Hyperliquid coin with $50M+ daily volume
 
 [claude]
 enabled = true

@@ -74,6 +74,28 @@ Health is how far equity sits between the $50 floor (0%) and the $100 start (100
 
 Claude's trading personality follows its rulebook: with "full send" it is told to hunt for trades, size up with conviction, add to winners and take partial profits, while sizing down as its health drops. It also wakes on 2% moves (not 3%), can check in as often as hourly, and sees the 1 hour chart. Its $15 monthly thinking cap is unchanged, so busier months push it onto the cheaper model sooner.
 
+## Trading anything liquid, earning its keep, and pre-learning (version 1.5)
+
+**What it can trade.** Any Hyperliquid perpetual doing over $50M a day, long or short, up to 3 positions at once. Total exposure stays at 1x its equity, so no leverage sneaks in through several coins. Code scans every liquid coin hourly and wakes Claude when one breaks its 20-day high or low, moves 5% in 4 hours, or has extreme funding (each alert at most once a day per coin).
+
+**How it earns its brain.** At the start of each month it's graded against its two rivals, the maths bot and simply holding ETH:
+
+| Last month | This month's thinking allowance | Smartest model |
+|---|---|---|
+| Beat both | full $15 | yes |
+| Beat one | $10 | yes |
+| Beat neither | $6 | no, cheaper model only |
+
+Two losing months in a row puts it on probation: half the risk per trade and one position at a time, until it has a winning month that beats at least one rival.
+
+**Promotion ladder.** Rookie, Trader, Senior trader, Partner. A promotion needs 30 days of at least +10%, beating both rivals, with 5 or more closed trades. It shows up in the dashboard and only happens if you approve it, which adds $100, $200 or $400 to its paper or testnet bankroll. On real money you'd top up the account yourself.
+
+**Pre-learning.** Three layers, all read before every decision:
+
+1. A written playbook (`bot/knowledge/playbook.md`): regimes, BTC leading, funding and liquidations, six setups with entries and stops, sizing, costs and common mistakes.
+2. Backtested stats (`bot/knowledge/setup_stats.md`) from 20 coins, mid 2024 to October 2026, 4h candles, after fees. Breakouts (+0.09R a trade) and momentum (+0.08R) had a small real edge, mostly on the long side, and were stronger in the last 90 days. Pullbacks (-0.06R) and range fades (-0.23R) lost money. Refresh with `python -m bot research`.
+3. A practice run, started from the dashboard: Claude trades 60 random moments from history with the coin and dates hidden, gets marked on what really happened, and writes lessons it keeps. Costs about $4 to $8 of Anthropic credit, capped at $15, and is billed to your Anthropic account rather than the bot.
+
 ## Stages
 
 ### Stage 1: paper trading (built, Claude added in version 1.1)

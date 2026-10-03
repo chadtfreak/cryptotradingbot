@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .claude_brain import ClaudeBrain
 from .engine import Engine
-from .market import KrakenMarket
+from .market import HyperliquidMarket
 from .store import Store
 
 CARRY_OVER = ("anthropic_api_key", "lessons", "lessons_updated", "claude_last_review_ts")
@@ -25,7 +25,7 @@ def build_claude(settings, maths: Engine | None, store: Store | None = None) -> 
         broker = LiveBroker(HyperliquidVenue(venue["name"], venue["account"], venue["agent_key"]), settings.costs)
     brain = ClaudeBrain(settings)
     brain.rival = maths
-    return Engine(settings, KrakenMarket(settings.bot.pair), store, broker=broker, brain=brain,
+    return Engine(settings, HyperliquidMarket(settings.bot.asset), store, broker=broker, brain=brain,
                   guardrails=settings.claude_guardrails)
 
 

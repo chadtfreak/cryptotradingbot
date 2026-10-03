@@ -1,6 +1,6 @@
 # Survival Bot
 
-Claude trades crypto with its own small account and has to pay its own way. It trades ETH long or short (as a 1x Hyperliquid perpetual), pays for its hosting and every bit of its own thinking from its balance, and dies if it drops below its survival floor. It keeps a journal and reviews itself weekly to get better. A simple maths bot trades alongside it as a rival. A dashboard shows what both are doing and why.
+Claude trades crypto with its own small account and has to pay its own way. It trades any coin doing over $50M a day on Hyperliquid, long or short, up to 3 at once (all 1x perpetuals), pays for its hosting and every bit of its own thinking from its balance, and dies if it drops below its survival floor. It keeps a journal, reviews itself weekly, earns its thinking budget and promotions by beating its rivals, and comes preloaded with a trading playbook, backtested stats and an optional practice run. A simple maths bot trades alongside it as a rival. A dashboard shows what both are doing and why.
 
 Currently in **paper mode**: real live prices, pretend money. See [docs/SCOPE.md](docs/SCOPE.md) for the plan and the honest maths.
 
@@ -52,6 +52,7 @@ To stop it, go back to the terminal and press **Ctrl+C**. To start it again late
 | `python -m bot run` | Start the bot and the dashboard |
 | `python -m bot backtest` | Replay the strategy over the last ~120 days of Kraken data |
 | `python -m bot backtest --interval 60` | Same, on 1 hour candles |
+| `python -m bot research` | Backtest the playbook setups on Hyperliquid history and refresh Claude's stats |
 | `python -m bot reset` | Delete all history and start a new life |
 | `pip install -r requirements-dev.txt && pytest` | Run the tests |
 
@@ -87,7 +88,13 @@ bot/
   strategy.py    entry, exit, stop and sizing rules
   backtest.py    replays the strategy over history
   broker.py      paper fills with fees, slippage and gas
-  market.py      Kraken price feed
+  market.py      Hyperliquid and Kraken price feeds
+  claude_brain.py  Claude: when to wake, what it sees, what it decides
+  scanner.py     ranks every liquid coin and flags breakouts and big moves
+  career.py      allowance, promotions and probation
+  research.py    backtests the playbook setups
+  practice.py    the historical practice run
+  knowledge/     the playbook and backtested stats Claude reads
   store.py       SQLite storage
   web.py         dashboard server and API
   static/        dashboard page

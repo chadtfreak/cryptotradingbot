@@ -56,6 +56,8 @@ class GuardrailSettings:
     allow_adding: bool = False  # buy more while already holding
     allow_short: bool = False
     max_leverage: float = 1.0  # total exposure as a multiple of equity
+    max_positions: int = 1  # positions held at once, one per coin
+    min_volume_usd: float = 0.0  # coins other than the primary need this much 24h volume (0 = primary only)
     stops_only_up: bool = True
 
 

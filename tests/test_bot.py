@@ -41,7 +41,7 @@ class FakeMarket:
         if price is not None:
             self._price = price
 
-    def candles(self, interval):
+    def candles(self, interval, coin=None, pair=None):
         return self._candles
 
     def price(self):
@@ -52,7 +52,7 @@ class FakeMarket:
 
     funding = 0.0
 
-    def funding_rate(self):
+    def funding_rate(self, coin=None):
         return self.funding
 
 
@@ -132,7 +132,7 @@ def test_engine_buys_on_cross_and_records_trade():
     engine, market, clock = make_engine(cross_up_series())
     engine.tick()
     assert engine.qty > 0
-    assert engine.store.get("stop") is not None
+    assert engine.position()["stop"] is not None
     [t] = engine.store.trades()
     assert t["side"] == "buy" and t["usd_aud"] == 1.5
     assert engine.equity(market.price()) < 100  # paid fees
@@ -149,7 +149,7 @@ def test_engine_does_not_retrade_same_candle():
 def test_stop_hit_sells():
     engine, market, clock = make_engine(cross_up_series())
     engine.tick()
-    stop = engine.store.get("stop")
+    stop = engine.position()["stop"]
     market.set(price=stop - 1)
     clock.t += 60
     engine.tick()
@@ -171,7 +171,7 @@ def test_daily_loss_limit_pauses_then_resumes_next_day():
     engine.tick()
     price = market.price()
     # Drop enough to lose >5% of equity but stay above the stop
-    engine.store.set("stop", 1.0)
+    pos = engine.position(); pos["stop"] = 1.0; engine.store.set("positions", {"ETH": pos})
     market.set(price=price * 0.5)
     clock.t += 60
     engine.tick()
@@ -244,7 +244,7 @@ def test_web_endpoints(monkeypatch):
     client = TestClient(create_app(engine, run_loop=False))
     assert client.get("/").status_code == 200
     assert client.get("/static/chart.umd.min.js").status_code == 200
-    assert client.get("/api/maths/status").json()["position"] is not None
+    assert client.get("/api/maths/status").json()["positions"][0]["coin"] == "ETH"
     assert len(client.get("/api/maths/trades").json()) == 1
     csv = client.get("/api/maths/trades.csv").text
     assert "usdt_aud_rate" in csv and "buy" in csv

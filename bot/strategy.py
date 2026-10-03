@@ -25,6 +25,8 @@ class Decision:
     stop: float | None = None
     size_usd: float | None = None  # None means size by the risk rule
     sell_fraction: float = 1.0  # for sells: share of the position to sell
+    coin: str | None = None  # None means the bot's primary coin
+    setup: str | None = None  # what kind of trade this is, for the setup scorecard
 
 
 @dataclass
