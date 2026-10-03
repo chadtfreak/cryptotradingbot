@@ -453,6 +453,8 @@ class Engine:
                 fill = Fill("sell" if pos["qty"] > 0 else "buy", abs(pos["qty"]), price, abs(pos["qty"]) * price, 0.0, 0.0)
                 self.store.add_trade(now, fill, pnl, self.market.usd_to_aud(), "Closed on the exchange (stop order fired or closed by hand).", coin=coin)
                 self.store.log(f"My {coin} position was closed on the exchange, about {pnl:+.2f} USDC. Probably the stop order fired.", level="trade", ts=now)
+                if hasattr(self.brain, "on_close"):
+                    self.brain.on_close(self, coin, pos, pnl, 1.0, now, price, "Closed on the exchange, probably the stop order fired.")
                 positions.pop(coin)
                 self.broker.sync_stop(0, None, coin=coin)
                 stops = self.store.get("exchange_stops") or {}
@@ -477,6 +479,7 @@ class Engine:
         pos["qty"] += side * fill.qty
         pos["cost_basis"] -= fill.cash_delta
         pos["stop"] = stop
+        pos["risk_usd"] = (pos.get("risk_usd") or 0.0) + fill.qty * abs(fill.price - stop)  # so results can be measured in R
         self.store.set("cash", self.cash + fill.cash_delta)
         self._save_position(coin, pos)
         self.store.add_trade(now, fill, None, self.market.usd_to_aud(), reason, coin=coin)
@@ -511,7 +514,7 @@ class Engine:
         self._sync_stop(coin, now)
         self.store.add_trade(now, fill, pnl, self.market.usd_to_aud(), reason, coin=coin)
         if hasattr(self.brain, "on_close"):
-            self.brain.on_close(self, coin, pos, pnl, fraction, now)
+            self.brain.on_close(self, coin, pos, pnl, fraction, now, fill.price, reason)
         what = "SELL" if long else "BUY BACK"
         label = f"{what} {fraction:.0%} of {coin}:" if fraction < 1 else ("SELL" if long else "CLOSE SHORT")
         self.store.log(f"{label} {fill.qty:.6g} {coin} at {fmt_px(fill.price)}. "
@@ -594,6 +597,7 @@ class Engine:
             "positions": positions,
             "exposure": self.exposure() if self.prices else 0.0,
             "max_positions": self.g.max_positions,
+            "min_volume_usd": self.g.min_volume_usd,
             "probation": bool(self.store.get("probation")),
             "started_at": self.store.get("started_at"),
             "day_start_equity": self.store.get("day_start_equity"),

@@ -12,7 +12,8 @@ from .engine import Engine
 from .market import HyperliquidMarket
 from .store import Store
 
-CARRY_OVER = ("anthropic_api_key", "lessons", "lessons_updated", "claude_last_review_ts")
+CARRY_OVER = ("anthropic_api_key", "lessons", "lessons_updated", "claude_last_review_ts", "practice_lessons", "practice_report",
+              "practice_status", "shadow_results", "trade_records", "trade_lessons")  # what Claude has learned goes with it
 VENUE_NAMES = {"paper": "Paper trading", "testnet": "Hyperliquid testnet", "mainnet": "Hyperliquid (real money)"}
 
 

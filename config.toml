@@ -56,8 +56,8 @@ allow_adding = true              # can add to a position it already holds
 stops_only_up = false            # can move its stop up or down
 allow_short = true               # can bet on ETH falling
 max_leverage = 1.0               # never more exposure than its equity. Hard-coded safety, keep at 1.
-max_positions = 3                # up to 3 coins at once
-min_volume_usd = 50000000        # any Hyperliquid coin with $50M+ daily volume
+max_positions = 5                # up to 5 coins at once
+min_volume_usd = 20000000        # any Hyperliquid coin with $20M+ daily volume
 
 [claude]
 enabled = true
@@ -67,7 +67,7 @@ smart_model = "claude-opus-5-5"  # used while Claude is healthy and on budget
 lean_model = "claude-sonnet-5-5" # used when money or budget is tight
 review_model = "claude-opus-5-5" # weekly review where it updates its lessons
 heartbeat_hours = 24.0           # check in at least this often even when nothing happens
-move_trigger_pct = 2.0           # wake if price moves this much since the last check
+move_trigger_pct = 1.5           # wake if price moves this much since the last check
 min_minutes_between_wakes = 30
 min_check_hours = 1.0            # shortest check-in Claude can schedule for itself
 review_every_days = 7

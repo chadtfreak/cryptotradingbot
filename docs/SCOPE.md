@@ -76,7 +76,7 @@ Claude's trading personality follows its rulebook: with "full send" it is told t
 
 ## Trading anything liquid, earning its keep, and pre-learning (version 1.5)
 
-**What it can trade.** Any Hyperliquid perpetual doing over $50M a day, long or short, up to 3 positions at once. Total exposure stays at 1x its equity, so no leverage sneaks in through several coins. Code scans every liquid coin hourly and wakes Claude when one breaks its 20-day high or low, moves 5% in 4 hours, or has extreme funding (each alert at most once a day per coin).
+**What it can trade.** Any Hyperliquid perpetual doing over $20M a day (about 20 coins), long or short, up to 5 positions at once. It wakes on 1.5% moves and may take short-term trades off the 1h chart. Total exposure stays at 1x its equity, so no leverage sneaks in through several coins. Code scans every liquid coin hourly and wakes Claude when one breaks its 20-day high or low, moves 5% in 4 hours, or has extreme funding (each alert at most once a day per coin).
 
 **How it earns its brain.** At the start of each month it's graded against its two rivals, the maths bot and simply holding ETH:
 
@@ -95,6 +95,15 @@ Two losing months in a row puts it on probation: half the risk per trade and one
 1. A written playbook (`bot/knowledge/playbook.md`): regimes, BTC leading, funding and liquidations, six setups with entries and stops, sizing, costs and common mistakes.
 2. Backtested stats (`bot/knowledge/setup_stats.md`) from 20 coins, mid 2024 to October 2026, 4h candles, after fees. Breakouts (+0.09R a trade) and momentum (+0.08R) had a small real edge, mostly on the long side, and were stronger in the last 90 days. Pullbacks (-0.06R) and range fades (-0.23R) lost money. Refresh with `python -m bot research`.
 3. A practice run, started from the dashboard: Claude trades 60 random moments from history with the coin and dates hidden, gets marked on what really happened, and writes lessons it keeps. Costs about $4 to $8 of Anthropic credit, capped at $15, and is billed to your Anthropic account rather than the bot.
+
+## Learning faster (version 1.6)
+
+Real trades come slowly, so a month of trading only teaches a handful of lessons. Four things speed that up:
+
+1. **Shadow calls.** Each time Claude wakes it also makes up to 5 quick calls (direction, stop, target, 4 to 72 hours, how sure it is) on coins it may or may not trade. Code marks them against live prices for free. That's several marked results per wake, for about a cent more.
+2. **A scorecard** in front of every decision: its real trades and shadow calls by setup, in R, and how sure it said it was against how often it was right.
+3. **A quick review of every closed trade.** The cheaper model writes one lesson right after a trade closes (about a cent), instead of waiting for the weekly review.
+4. **Lean calls in the practice run.** On every historical moment, traded or not, it calls which way price moves first, so 60 moments give 60 marked calls instead of a handful of trades.
 
 ## Stages
 

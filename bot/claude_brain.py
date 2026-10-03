@@ -21,7 +21,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import scanner
+from . import learning, scanner
 from .career import Career, month_key
 from .config import Settings
 from .indicators import atr, ema, rsi
@@ -63,6 +63,8 @@ Tag every new trade with its setup (breakout, pullback, range_fade, squeeze_fade
 
 Perps charge or pay funding every hour: when the rate is positive, longs pay shorts, and when it is negative, shorts pay longs. It comes out of your balance like any other cost.
 
+Shadow calls: every time you wake, also make up to 5 quick calls on the coins you find most interesting, whether or not you trade them: direction, stop, target, how many hours it has to work (4 to 72) and your honest chance the target is hit first. Code marks every call against live prices for free, and your scorecard below shows how they went, by setup and by how sure you said you were. This is your fastest way to learn which of your instincts actually work, so make real calls, not safe ones. Calls on coins you trade are fine too.
+
 Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). You are also woken automatically on breakouts, big moves, trend signals and when price nears a stop.
 
 # Your playbook
@@ -79,6 +81,7 @@ PATIENT_STYLE = """Your owner wants you to stay alive first and grow second, and
 AGGRESSIVE_STYLE = """Your owner wants you to be aggressive and to trade whatever you see as profitable. Growth is the goal and sitting in cash waiting for perfection is not. The guardrails are deliberately loose: only the survival floor and your thinking budget really hold you back. Trade like a bold, skilled discretionary trader:
 - Hunt for opportunities in both directions and across every liquid coin. Don't sit in cash just because one market is dull or falling: look at the scanner and short what's weak.
 - Size up when you have conviction and the setup has a proven record. Add to winners while the move is working. Take partial profits into strength and let the rest run.
+- Short-term trades off the 1h chart are welcome when the setup is clean. More good trades mean faster feedback on what works.
 - Cut losers fast and re-enter when the setup returns. Being wrong small is fine, being frozen is not.
 - Still respect the maths: costs are about 0.1% per round trip plus your thinking, so a trade needs room to move.
 - Dying ends everything. Aggressive does not mean reckless near the floor: as your health drops, size down."""
@@ -111,12 +114,14 @@ DECISION_TOOL = {
         "type": "object",
         "properties": {
             "actions": {"type": "array", "items": ACTION_SCHEMA},
+            "calls": {"type": "array", "items": learning.CALL_SCHEMA,
+                      "description": "Up to 5 shadow calls, marked automatically against live prices."},
             "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
             "reasoning": {"type": "string", "description": "Plain English explanation for your owner, 2 to 5 sentences."},
             "journal": {"type": "string", "description": "A short note to your future self: what you expect to happen and what would prove you wrong."},
             "next_check_hours": {"type": "number", "description": "When to check in next if nothing else happens, in hours (max 48)."},
         },
-        "required": ["actions", "confidence", "reasoning", "journal", "next_check_hours"],
+        "required": ["actions", "calls", "confidence", "reasoning", "journal", "next_check_hours"],
         "additionalProperties": False,
     },
 }
@@ -313,6 +318,9 @@ class ClaudeBrain:
 
     # Main entry from the engine
     def decide(self, eng, candles, price: float, now: int):
+        for r in learning.grade_calls(eng.store, eng.prices, now):
+            eng.store.log(f"Shadow call marked: {r['coin']} {'long' if r['dir'] > 0 else 'short'} ({r['setup']}) from {px(r['entry'])} "
+                          f"hit its {r['exit'] if r['exit'] != 'time' else 'time limit'} at {px(r['exit_price'])}, {r['r']:+.2f}R.", ts=now)
         key = self.api_key(eng)
         if not key:
             if not eng.store.get("claude_waiting_logged"):
@@ -332,6 +340,7 @@ class ClaudeBrain:
 
         if self._review_due(eng, now) and tier["name"] in ("sharp", "lean"):
             self.review(eng, key, now, tier)
+        learning.review_trades(self, eng, key, now, self.c.lean_model)
 
         reason = self.wake_reason(eng, candles, now, tier)
         if reason is None:
@@ -428,6 +437,9 @@ class ClaudeBrain:
                 decisions.append(Decision("hold", "Claude moved the stop", stop, coin=coin))
                 labels.append(f"STOP {coin} {px(stop)}")
         summary = ", ".join(labels) or "HOLD"
+        called = learning.add_calls(eng.store, d.get("calls") or [], eng.prices, now)
+        if called:
+            summary += f" (shadow calls: {', '.join(called)})"
         eng.store.add_decision(now, "decision", answered_by, reason, summary, d.get("confidence"),
                                d.get("reasoning", ""), d.get("journal"), cost, eng.last_price)
         eng.store.log(f"Claude ({answered_by.replace('claude-', '')}, {tier['name']} mode, cost ${cost:.3f}) woke because: {reason}. "
@@ -500,6 +512,8 @@ class ClaudeBrain:
                 lines.append(f"- {fmt_time(d['ts'])}: {d['action'] or 'none'} ({d['confidence'] or '?'}). "
                              f"{d['reasoning']} Journal: {d['journal'] or ''}")
             lines.append("")
+        lines.append("## Your scorecard")
+        lines.append(learning.scorecard(st) + "\n")
         lines.append("## Your lessons learned")
         lines.append(st.get("lessons") or "None yet from live trading. Lean on your playbook, the setup stats and your practice lessons.")
         lines.append("\nDecide now and call submit_decisions.")
@@ -537,8 +551,15 @@ class ClaudeBrain:
             f, sl = ema(closes, 20)[-1], ema(closes, 50)[-1]
             rows = " | ".join(f"{datetime.fromtimestamp(c.ts, timezone.utc).strftime('%d %H:%M')} {c.low:.6g}-{c.high:.6g} close {c.close:.6g}" for c in c4[-12:])
             perp = eng.market.perp_context(coin) or {}
-            return (f"## {coin} (held)\n4h: 20 EMA {px(f)}, 50 EMA {px(sl)}, RSI {rsi(closes)[-1]:.0f}, "
-                    f"funding {perp.get('funding', 0) * 24 * 365 * 100:+.0f}% a year. Last 12 4h candles: {rows}\n")
+            out = (f"## {coin} (held)\n4h: 20 EMA {px(f)}, 50 EMA {px(sl)}, RSI {rsi(closes)[-1]:.0f}, "
+                   f"funding {perp.get('funding', 0) * 24 * 365 * 100:+.0f}% a year. Last 12 4h candles: {rows}\n")
+            try:
+                h1 = eng.market.candles(60, coin=coin, count=12)
+                out += "Last 12 1h candles: " + " | ".join(
+                    f"{datetime.fromtimestamp(c.ts, timezone.utc).strftime('%H:%M')} {c.low:.6g}-{c.high:.6g} close {c.close:.6g}" for c in h1) + "\n"
+            except Exception:
+                pass
+            return out
         except Exception:
             return f"## {coin} (held)\nNo detail available right now.\n"
 
@@ -600,6 +621,8 @@ class ClaudeBrain:
             lines.append(f"The maths bot is at {self.rival.summary()['equity']:.2f}.")
         lines.append(f"You spent ${-st.ledger_total_since('ai_cost', since):.2f} on thinking in this period.")
         lines.append(self.career.context(st, self.rival, now) + "\n")
+        lines.append("## Your scorecard (trades by setup, shadow calls, lessons from each closed trade)")
+        lines.append(learning.scorecard(st) + "\n")
         lines.append("## Your decisions (oldest first)")
         for d in reversed(st.decisions(100, kind="decision", since=since)):
             lines.append(f"- {fmt_time(d['ts'])}, woken because: {d['wake_reason']}. {d['action'] or 'none'} "
@@ -626,6 +649,9 @@ class ClaudeBrain:
         st.set("lessons_updated", now)
         st.add_decision(now, "review", answered_by, "Weekly review", None, None, r["summary"], r["lessons"], cost, price)
         st.log(f"Weekly review done (cost ${cost:.3f}). {r['summary']}", level="thought", ts=now)
+
+    def on_close(self, eng, coin, pos, pnl, fraction, now, exit_price=None, reason="") -> None:
+        learning.record_close(eng.store, coin, pos, pnl, fraction, now, exit_price or eng.prices.get(coin, 0), reason)
 
     # Dashboard
     def extra_summary(self, eng) -> dict:
@@ -654,5 +680,6 @@ class ClaudeBrain:
             "last_decision": last[0] if last else None,
             "decisions": eng.store.decisions(20),
             "career": self.career.summary(eng.store, now),
+            "scorecard": learning.stats(eng.store),
             "scanner": [{k: f[k] for k in ("coin", "price", "ch_24h", "trend", "breakout", "breakdown", "funding_apr", "volume_m")} for f in scan],
         }}

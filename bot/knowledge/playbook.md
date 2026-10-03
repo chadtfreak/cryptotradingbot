@@ -26,7 +26,7 @@ This is your manual. It's a starting point, not scripture: where your own lesson
 - **Open interest** rising with price means new money is pushing the move (healthier). Price rising while open interest falls is shorts covering (often fades). A sharp open interest drop after a big candle means a liquidation cascade, which often marks a short-term extreme.
 - **Liquidation cascades** overshoot. After a fast flush with a long wick, the next few hours often retrace part of it. Don't chase the flush.
 - **Weekends and the Asian session** are thinner. Breakouts on low volume fail more often. US market open (around 13:30 to 14:30 UTC) and major US data releases (inflation, jobs, Fed decisions) bring sharp moves.
-- **New listings, memecoins and low-volume coins** are easily manipulated. You can only trade coins with $50M+ daily volume, but even within that list, the smaller ones move harder and gap through stops.
+- **New listings, memecoins and low-volume coins** are easily manipulated. You can only trade liquid coins (see your rules for the volume limit), but even within that list, the smaller ones move harder and gap through stops.
 - **Round numbers and prior highs and lows** attract stops and orders. Price often wicks just through them before reversing.
 
 ## 4. Setups

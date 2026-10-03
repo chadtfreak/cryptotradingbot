@@ -4,7 +4,7 @@ name: Survival Bot
 tagline: Claude trades crypto and has to pay for its own thinking
 icon: https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/bot/static/icon.svg
 category: finance
-version: "1.5.1"
+version: "1.6.0"
 port: 8766
 description: >-
   Claude trades any liquid crypto, long or short, with its own small account. Every time it thinks, the
@@ -25,10 +25,12 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Rides out short Hyperliquid outages quietly: data requests are retried, and
-  the dashboard only warns if the exchange is unreachable for a few minutes.
-  Version 1.5 added trading any liquid coin, the career ladder, the playbook
-  and the practice run.
+  Claude learns faster. Every time it wakes it makes quick shadow calls that are
+  marked automatically against live prices, it reviews each trade as soon as it
+  closes, and a new scorecard shows how each type of trade is going. Practice
+  runs now mark a call on every moment. It also trades more: coins over $20M a
+  day, up to 5 at once, waking on 1.5% moves. Brief Hyperliquid outages are
+  retried quietly.
 dependencies: []
 path: ""
 defaultUsername: ""

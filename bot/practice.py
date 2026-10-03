@@ -24,6 +24,8 @@ PRACTICE_PROMPT = """You are the trading mind of Survival Bot, doing a practice 
 
 Decide what you would do right now, exactly as you would in live trading: go long, go short, or pass. If you trade, give your stop and target as a percentage distance from the entry at 100, your honest probability that the target is hit before the stop, and the setup you're using. Trades are closed after 5 days if neither is hit. Fees are about 0.13% per round trip. Passing is often the right answer.
 
+Whether you trade or pass, also make a lean call on every moment: within the next 5 days, will price move up or down by the amount shown first? Give your honest probability (50 means a coin flip). These calls are marked too, so they show whether your read of a chart is any good even when you don't trade it.
+
 Your playbook:
 {playbook}
 
@@ -44,16 +46,18 @@ PRACTICE_TOOL = {
             "stop_pct": {"type": ["number", "null"], "description": "Stop distance from entry, in percent."},
             "target_pct": {"type": ["number", "null"], "description": "Target distance from entry, in percent."},
             "win_probability": {"type": "number", "description": "Your honest probability (0 to 100) that the target is hit before the stop."},
+            "lean": {"type": "string", "enum": ["up", "down"], "description": "Which move you think comes first, even if you pass."},
+            "lean_probability": {"type": "number", "description": "Your honest probability (50 to 100) that your lean is right."},
             "reasoning": {"type": "string", "description": "One or two sentences."},
         },
-        "required": ["action", "setup", "stop_pct", "target_pct", "win_probability", "reasoning"],
+        "required": ["action", "setup", "stop_pct", "target_pct", "win_probability", "lean", "lean_probability", "reasoning"],
         "additionalProperties": False,
     },
 }
 
-REVIEW_PROMPT = """You are the trading mind of Survival Bot. You just finished a practice run on anonymised historical charts, before trading real money. Below are your decisions, how each one turned out, and summary statistics including how well calibrated your confidence was.
+REVIEW_PROMPT = """You are the trading mind of Survival Bot. You just finished a practice run on anonymised historical charts, before trading real money. Below are your decisions, how each one turned out, and summary statistics including how well calibrated your confidence was. On every moment you also made a lean call (which way price would move first), so you can see whether your read of a chart beats a coin flip, including on the moments you passed.
 
-Be a tough, honest coach to yourself. Where did you have an edge and where didn't you? Which setups worked? Were you over- or under-confident? Did you pass on moves you should have taken, or take trades you should have passed? Then write the lessons you'll carry into live trading: short, specific, actionable rules (at most 12 bullet points, under 300 words). Call submit_practice_review once."""
+Be a tough, honest coach to yourself. Where did you have an edge and where didn't you? Which setups worked? Were you over- or under-confident? Did you pass on moves you should have taken, or take trades you should have passed? Were your leans right more often when you were more sure? Then write the lessons you'll carry into live trading: short, specific, actionable rules (at most 12 bullet points, under 300 words). Call submit_practice_review once."""
 
 REVIEW_TOOL = {
     "name": "submit_practice_review",
@@ -90,6 +94,7 @@ def scenario_text(candles, i: int, btc) -> str:
              f"30d {(closes[-1] / closes[-181] - 1) * 100 if len(closes) > 181 else 0:+.1f}%.",
              f"4h: 20 EMA {f * k:.2f}, 50 EMA {s * k:.2f}, RSI {rsi(closes)[-1]:.0f}, ATR {a * k:.2f} ({a / base * 100:.1f}%). "
              f"20-day high {hi:.2f}, 20-day low {lo:.2f}.",
+             f"Lean call size: {lean_size(a, base):.1f}% (which comes first within 5 days, +{lean_size(a, base):.1f}% or -{lean_size(a, base):.1f}%?).",
              "Last 40 4h candles, oldest first (open high low close):"]
     lines += [f"{o:.2f} {h:.2f} {l:.2f} {c:.2f}" for o, h, l, c in rows]
     if btc:
@@ -100,6 +105,26 @@ def scenario_text(candles, i: int, btc) -> str:
     return "\n".join(lines)
 
 
+def lean_size(atr_value: float, price: float) -> float:
+    """How far price has to move for a lean call to count: two ATRs, in percent."""
+    return round(2 * atr_value / price * 100, 1)
+
+
+def grade_lean(candles, i: int, lean: str | None, size_pct: float) -> bool | None:
+    """True if the leaned move came first, False if the other did, None if neither or both in one candle."""
+    if lean not in ("up", "down") or size_pct <= 0:
+        return None
+    entry = candles[i].close
+    up, down = entry * (1 + size_pct / 100), entry * (1 - size_pct / 100)
+    for c in candles[i + 1:i + 1 + MAX_HOLD]:
+        hit_up, hit_down = c.high >= up, c.low <= down
+        if hit_up and hit_down:
+            return None
+        if hit_up or hit_down:
+            return hit_up == (lean == "up")
+    return None
+
+
 def grade(candles, i: int, d: dict) -> dict:
     """What actually happened after the decision."""
     entry = candles[i].close
@@ -107,6 +132,10 @@ def grade(candles, i: int, d: dict) -> dict:
     best_up = max((c.high for c in future), default=entry) / entry * 100 - 100
     best_down = 100 - min((c.low for c in future), default=entry) / entry * 100
     out = {"move_up_pct": best_up, "move_down_pct": best_down, "end_pct": (future[-1].close / entry - 1) * 100 if future else 0}
+    closes = [c.close for c in candles[:i + 1]]
+    a = atr([c.high for c in candles[:i + 1]], [c.low for c in candles[:i + 1]], closes, 14)[-1]
+    out["lean_size"] = lean_size(a, entry) if a else 0.0
+    out["lean_right"] = grade_lean(candles, i, d.get("lean"), out["lean_size"])
     if d["action"] not in ("long", "short") or not d.get("stop_pct") or not d.get("target_pct"):
         return {**out, "taken": False}
     stop_pct = min(max(float(d["stop_pct"]), 0.3), 30)
@@ -220,18 +249,23 @@ class PracticeRun:
         self.store.set("practice_report", {"summary": review, "stats": summary, "results": results[-200:]})
         self.status(state="done", cost=round(self.cost, 3), message=review, finished=int(time.time()))
         self.store.log(f"Practice run finished: {summary['taken']} trades from {summary['scenarios']} moments, "
-                       f"{summary['total_r']:+.1f}R in total ({summary['expectancy']:+.2f}R per trade), cost ${self.cost:.2f}. {review}",
+                       f"{summary['total_r']:+.1f}R in total ({summary['expectancy']:+.2f}R per trade)"
+                       + (f", lean calls right {summary['lean_calls']['right_pct']:.0f}% of {summary['lean_calls']['marked']}" if summary.get("lean_calls") else "")
+                       + f", cost ${self.cost:.2f}. {review}",
                        level="thought")
 
     def _review(self, results, summary):
         lines = [json.dumps(summary, indent=1), "", "Each decision (coin hidden from you at the time is shown here):"]
+        def lean(r):
+            res = {True: "right", False: "wrong", None: "unclear"}[r.get("lean_right")]
+            return f" Lean {r.get('lean')} at {r.get('lean_probability', 50):.0f}% (size {r.get('lean_size', 0):.1f}%): {res}."
         for r in results:
             if r["taken"]:
                 lines.append(f"- {r['coin']}: {r['action']} {r.get('setup')}, stop {r['stop_pct']}%, target {r['target_pct']}%, "
-                             f"you said {r['win_probability']:.0f}% -> {r['exit']}, {r['r']:+.2f}R. Reasoning: {r['reasoning']}")
+                             f"you said {r['win_probability']:.0f}% -> {r['exit']}, {r['r']:+.2f}R.{lean(r)} Reasoning: {r['reasoning']}")
             else:
                 lines.append(f"- {r['coin']}: passed. Next 5 days: up to +{r['move_up_pct']:.1f}%, down to -{r['move_down_pct']:.1f}%, "
-                             f"ended {r['end_pct']:+.1f}%. Reasoning: {r['reasoning']}")
+                             f"ended {r['end_pct']:+.1f}%.{lean(r)} Reasoning: {r['reasoning']}")
         content, cost, _ = self.brain._call(self.key, self.model, REVIEW_PROMPT, "\n".join(lines), [REVIEW_TOOL])
         self.cost += cost
         call = next((b for b in content if getattr(b, "type", None) == "tool_use" and b.name == "submit_practice_review"), None)
@@ -260,4 +294,17 @@ def summarise(results) -> dict:
     out["calibration"] = calib
     big = [r for r in results if not r["taken"] and max(r["move_up_pct"], r["move_down_pct"]) >= 10]
     out["passed_on_10pct_moves"] = len(big)
+    leans = [r for r in results if r.get("lean_right") is not None]
+    if leans:
+        right = lambda rows: sum(1 for r in rows if r["lean_right"]) / len(rows) * 100
+        out["lean_calls"] = {"marked": len(leans), "right_pct": right(leans)}
+        passed = [r for r in leans if not r["taken"]]
+        if passed:
+            out["lean_calls"]["right_pct_when_passed"] = right(passed)
+        lc = {}
+        for lo, hi, name in ((0, 60, "50 to 60%"), (60, 70, "60 to 70%"), (70, 101, "70% or more")):
+            b = [r for r in leans if lo <= (r.get("lean_probability") or 50) < hi]
+            if b:
+                lc[name] = {"calls": len(b), "right_pct": right(b)}
+        out["lean_calls"]["by_confidence"] = lc
     return out

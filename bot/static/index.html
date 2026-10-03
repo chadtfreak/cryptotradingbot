@@ -108,6 +108,7 @@
   .practice-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
   .practice-form input { width: 90px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .split > * { min-width: 0; }
   @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
   table.compact th, table.compact td { padding: 8px 6px; }
   .hidden { display: none !important; }
@@ -194,10 +195,10 @@
   </section>
 
   <section class="split hidden" id="claude-extra">
-    <div class="card"><h2>Market scanner</h2><div class="sub" style="margin-bottom:8px">The coins Claude finds most interesting right now, out of every coin trading over $50M a day. &#9650; means it just broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate.</div><div class="tablewrap" id="scanner"></div></div>
+    <div class="card"><h2>Market scanner</h2><div class="sub" style="margin-bottom:8px">The coins Claude finds most interesting right now, out of every coin trading over <span id="minvol">$20M</span> a day. &#9650; means it just broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate.</div><div class="tablewrap" id="scanner"></div></div>
     <div class="card">
       <h2>Practice run</h2>
-      <div class="sub">Claude trades 60 random moments from the last two years with the coin and dates hidden, then gets marked on what actually happened and writes up its lessons. Costs about $4 to $8 of Anthropic credit, billed to your Anthropic account, not the bot.</div>
+      <div class="sub">Claude trades 60 random moments from the last two years with the coin and dates hidden, and calls which way each one goes even when it doesn't trade. Then it gets marked on what actually happened and writes up its lessons. Costs about $2 to $5 of Anthropic credit, billed to your Anthropic account, not the bot.</div>
       <div class="practice-form" id="practice-form">
         <input id="practice-n" type="number" min="10" max="150" value="60" aria-label="Number of scenarios">
         <span class="sub">moments</span>
@@ -205,6 +206,16 @@
       </div>
       <div class="msg" id="practice-msg"></div>
       <div class="lessons sub" id="practice-lessons" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="card hidden" id="scorecard-card" style="margin-bottom:14px">
+    <h2>Scorecard</h2>
+    <div class="sub" style="margin-bottom:10px">How Claude is really doing. Shadow calls are quick predictions it makes every time it wakes, marked automatically against live prices, so it learns from far more than its real trades. R is the result in multiples of what was risked: +2R means it made twice what it stood to lose.</div>
+    <div class="split" style="margin-bottom:0">
+      <div><div class="tablewrap" id="score-setups"></div><div class="sub" id="score-calib" style="margin-top:8px"></div></div>
+      <div><div class="label"><strong>Latest marked calls</strong></div><div class="tablewrap" id="score-calls"></div>
+        <div class="label" style="margin-top:12px"><strong>Lessons from closed trades</strong></div><div id="score-lessons" class="sub"></div></div>
     </div>
   </section>
 
@@ -270,7 +281,7 @@ function renderStatus(s) {
   $("status").textContent = s.status;
   $("status").className = "pill " + s.status;
   $("subtitle").textContent = s.max_positions > 1
-    ? `${s.label}: trades any coin doing over $50M a day, up to ${s.max_positions} at once. Born ${when(s.started_at)}.`
+    ? `${s.label}: trades any coin doing over $${Math.round((s.min_volume_usd || 0) / 1e6)}M a day, up to ${s.max_positions} at once. Born ${when(s.started_at)}.`
     : `${s.label}: ${s.asset} on ${s.interval_minutes / 60}h candles${s.price ? `, last price ${usd(s.price)}` : ""}. Born ${when(s.started_at)}.`;
   $("csv").href = `api/${s.bot}/trades.csv`;
   $("equity").textContent = usd(s.equity);
@@ -297,13 +308,14 @@ function renderStatus(s) {
   const fr = s.funding_rate == null || ps.length ? "" : `<dl><dt>Funding now</dt><dd>${(s.funding_rate * 100).toFixed(4)}%/h</dd></dl>`;
   const fund = s.funding_paid ? `<div class="sub" style="margin-top:8px">Funding ${s.funding_paid >= 0 ? "paid" : "earned"} so far: ${usd(Math.abs(s.funding_paid))}</div>` : "";
   $("position").innerHTML = !ps.length ? `<div class="empty">Holding ${usd(s.cash)} USDC, no open positions.</div>${fr}${fund}` : `
-    <div class="tablewrap"><table class="compact"><thead><tr><th>Coin</th><th>Value</th><th>Entry</th><th>Stop</th><th>P&amp;L</th></tr></thead><tbody>${
+    <div class="tablewrap"><table class="compact"><thead><tr><th>Coin</th><th>Value</th><th>Stop</th><th>P&amp;L</th></tr></thead><tbody>${
       ps.map((p) => `<tr title="${esc(p.setup || "")}">
-        <td><strong>${esc(p.coin)}</strong> <strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong>${p.setup ? `<br><span class="sub">${esc(p.setup.replace("_", " "))}</span>` : ""}</td>
-        <td>${usd(p.value)}</td><td>${px(p.entry)}</td><td>${px(p.stop)}</td>
+        <td style="white-space:normal"><strong>${esc(p.coin)}</strong> <strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong><br><span class="sub">from ${px(p.entry)}${p.setup ? `, ${esc(p.setup.replace("_", " "))}` : ""}</span></td>
+        <td>${usd(p.value)}</td><td>${px(p.stop)}</td>
         <td class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}</td></tr>`).join("")
     }</tbody></table></div>
     <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.</div>${fund}`;
+  if (s.min_volume_usd) $("minvol").textContent = `$${Math.round(s.min_volume_usd / 1e6)}M`;
   renderBrain(s.brain);
 }
 
@@ -318,6 +330,7 @@ function renderBrain(b) {
   $("brain").classList.toggle("hidden", !b);
   $("lessons-card").classList.toggle("hidden", !b);
   $("claude-extra").classList.toggle("hidden", !b);
+  $("scorecard-card").classList.toggle("hidden", !b);
   if (!b) return;
   $("tier").textContent = b.tier || "-";
   $("tier").className = "pill " + (b.tier || "");
@@ -359,6 +372,32 @@ function renderBrain(b) {
   renderCareer(b.career);
   renderScanner(b.scanner || []);
   renderPractice(b);
+  renderScorecard(b.scorecard);
+}
+
+function renderScorecard(sc) {
+  if (!sc) return;
+  const r = (x) => x == null ? "-" : (x > 0 ? "+" : "") + x.toFixed(2) + "R";
+  const w = (x) => x == null ? "-" : Math.round(x) + "%";
+  const rows = [["All real trades", sc.trades], ["All shadow calls", sc.calls]];
+  const setups = new Set([...Object.keys(sc.trades_by_setup || {}), ...Object.keys(sc.calls_by_setup || {})]);
+  $("score-setups").innerHTML = !sc.trades.n && !sc.calls.n
+    ? `<div class="empty">Nothing marked yet. ${sc.open_calls} shadow call${sc.open_calls === 1 ? "" : "s"} waiting to be marked.</div>`
+    : `<table class="compact"><thead><tr><th>Setup</th><th>Trades</th><th>Avg</th><th>Calls</th><th>Right</th><th>Avg</th></tr></thead><tbody>
+      <tr><td><strong>Overall</strong></td><td>${sc.trades.n}</td><td>${r(sc.trades.avg_r)}</td><td>${sc.calls.n}</td><td>${w(sc.calls.win)}</td><td>${r(sc.calls.avg_r)}</td></tr>
+      ${[...setups].map((k) => { const t = (sc.trades_by_setup || {})[k] || { n: 0 }, c = (sc.calls_by_setup || {})[k] || { n: 0 };
+        return `<tr><td>${esc(k.replace("_", " "))}</td><td>${t.n}</td><td>${r(t.avg_r)}</td><td>${c.n}</td><td>${w(c.win)}</td><td>${r(c.avg_r)}</td></tr>`; }).join("")}
+      </tbody></table>`;
+  $("score-calib").textContent = (sc.calibration || []).length
+    ? "How sure it said it was vs how often the target was hit: " + sc.calibration.map((b) => `said ${Math.round(b.said)}%, hit ${Math.round(b.hit)}% (${b.n})`).join("; ") + `. ${sc.open_calls} calls open.`
+    : (sc.calls.n ? `${sc.open_calls} calls open.` : "");
+  $("score-calls").innerHTML = (sc.recent_calls || []).length
+    ? `<table class="compact"><tbody>${sc.recent_calls.map((c) => `<tr><td>${when(c.closed)}</td><td><strong>${esc(c.coin)}</strong> ${c.dir > 0 ? "long" : "short"}</td>
+        <td>${esc(c.exit === "time" ? "time up" : c.exit)}</td><td class="${c.r > 0 ? "good" : c.r < 0 ? "bad" : ""}">${r(c.r)}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">None yet.</div>`;
+  $("score-lessons").innerHTML = (sc.lessons || []).length
+    ? sc.lessons.map((l) => `<div class="event"><strong>${esc(l.coin)}</strong> ${esc(l.setup.replace("_", " "))}, ${usd(l.pnl, true)}, ${esc(l.verdict)}. ${esc(l.lesson)}</div>`).join("")
+    : "Claude writes one here each time a trade closes.";
 }
 
 function renderCareer(c) {
@@ -504,7 +543,7 @@ $("venuesave").onclick = async () => {
 };
 $("practice-go").onclick = async () => {
   const n = parseInt($("practice-n").value, 10);
-  if (!confirm(`Run ${n} practice trades? This uses roughly $${(n * 0.1).toFixed(0)} of Anthropic credit (capped at $15), billed to your Anthropic account.`)) return;
+  if (!confirm(`Run ${n} practice trades? This uses roughly $${Math.max(1, Math.round(n * 0.05))} of Anthropic credit (capped at $15), billed to your Anthropic account.`)) return;
   try {
     renderStatus(await api("api/claude/practice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenarios: n }) }));
   } catch (e) {
