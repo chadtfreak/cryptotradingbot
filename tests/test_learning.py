@@ -102,3 +102,51 @@ def test_summarise_lean_calls():
     s = summarise(rs)["lean_calls"]
     assert s["marked"] == 3 and round(s["right_pct"]) == 67 and s["right_pct_when_passed"] == 50
     assert s["by_confidence"]["70% or more"]["right_pct"] == 100
+
+
+# Learning phase
+
+def learning_engine(budget=40.0, days=30):
+    from tests.test_multi import make_multi as mm
+    d = actions()
+    eng, fake, market, clock = mm([tool_reply("submit_decisions", d)] * 5)
+    eng.brain.c.learning_phase_budget_usd, eng.brain.c.learning_phase_days = budget, days
+    return eng, fake, market, clock
+
+
+def test_learning_phase_pays_for_thinking_and_uses_smart_model():
+    eng, fake, market, clock = learning_engine()
+    eng.store.set("allowance", {"month": "2027-01", "amount": 6.0, "smart": False, "why": "Beat neither."})
+    cash = eng.cash
+    eng.tick()
+    assert fake.requests[0]["model"] == "claude-opus-5-5"
+    assert eng.cash == cash  # not charged to the bot
+    assert eng.store.ledger_total("ai_sponsored") < 0 and eng.store.ledger_total("ai_cost") == 0
+    tier = eng.brain.tier(eng, clock.t)
+    assert tier["learning"] and tier["budget"] == 40.0 and tier["name"] == "sharp"
+    assert eng.summary()["brain"]["learning"]["active"]
+
+
+def test_learning_phase_ends_after_its_days():
+    eng, fake, market, clock = learning_engine(days=1)
+    eng.tick()
+    clock.t += 2 * 86400
+    eng.store.set("claude_next_check_ts", clock.t - 1)
+    cash = eng.cash
+    eng.tick()
+    assert eng.cash < cash  # back to paying its own way
+    assert eng.store.get("learning_phase_ended") and "Learning phase over" in " ".join(e["message"] for e in eng.store.events())
+    assert not eng.brain.tier(eng, clock.t).get("learning")
+
+
+def test_learning_phase_ends_when_budget_used():
+    eng, fake, market, clock = learning_engine(budget=1.0)
+    eng.tick()
+    eng.store.add_ledger(clock.t, "ai_sponsored", -0.9, "practice")
+    assert not eng.brain.learning(eng, clock.t)["active"]
+
+
+def test_no_learning_phase_by_default():
+    eng, fake, market, clock = make_multi([tool_reply("submit_decisions", actions())])
+    eng.tick()
+    assert eng.brain.learning(eng, clock.t) is None and eng.store.ledger_total("ai_cost") < 0

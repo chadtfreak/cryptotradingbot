@@ -73,3 +73,5 @@ min_check_hours = 1.0            # shortest check-in Claude can schedule for its
 review_every_days = 7
 web_searches_per_wake = 2        # news searches allowed per check, when budget allows
 allow_mainnet = false            # real-money Hyperliquid stays locked until the testnet run has proved itself
+learning_phase_budget_usd = 40.0 # a one-off learning phase: thinking paid by the owner, not Claude's balance, smartest model throughout
+learning_phase_days = 30         # it starts on first run and ends after this many days or when the budget is used

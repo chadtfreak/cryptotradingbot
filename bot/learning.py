@@ -231,7 +231,7 @@ def _review_one(brain, eng, key, now, model, rec) -> None:
     except Exception:
         pass
     content, cost, answered_by = brain._call(key, model, TRADE_REVIEW_PROMPT, "\n".join(lines), [TRADE_REVIEW_TOOL])
-    eng.charge(now, "ai_cost", cost, f"{answered_by}: review of the {rec['coin']} trade")
+    brain.pay(eng, now, cost, f"{answered_by}: review of the {rec['coin']} trade")
     call = next((b for b in content if getattr(b, "type", None) == "tool_use" and b.name == "submit_trade_review"), None)
     if call is None:
         return

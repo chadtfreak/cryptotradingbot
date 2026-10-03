@@ -105,6 +105,8 @@ Real trades come slowly, so a month of trading only teaches a handful of lessons
 3. **A quick review of every closed trade.** The cheaper model writes one lesson right after a trade closes (about a cent), instead of waiting for the weekly review.
 4. **Lean calls in the practice run.** On every historical moment, traded or not, it calls which way price moves first, so 60 moments give 60 marked calls instead of a handful of trades.
 
+**Learning phase (October 2026).** For the first 30 days on testnet the owner pays for Claude's thinking, up to $40, instead of it coming out of Claude's $100. It uses the smartest model throughout, and practice runs count towards the $40. When the 30 days or the $40 run out, it goes back to paying its own way under the normal earned allowance. Leverage stays at 1x and the bankroll stays at $100: leverage doesn't speed up learning (results are measured in R), and $100 is the real-money rehearsal.
+
 ## Stages
 
 ### Stage 1: paper trading (built, Claude added in version 1.1)

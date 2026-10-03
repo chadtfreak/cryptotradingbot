@@ -137,7 +137,7 @@
     <h2>Claude's brain</h2>
     <div class="brain-grid">
       <div><div class="label">Mode</div><div class="value"><span id="tier" class="pill">-</span> <span id="style" class="pill dead hidden"></span> <span id="model" class="sub"></span></div></div>
-      <div><div class="label">Thinking budget this month</div><div class="value" id="spend">-</div><div class="bar"><div id="spendbar" style="width:0"></div></div></div>
+      <div><div class="label" id="spend-label">Thinking budget this month</div><div class="value" id="spend">-</div><div class="bar"><div id="spendbar" style="width:0"></div></div></div>
       <div><div class="label">Last check</div><div class="value" id="lastwake">-</div><div class="sub" id="nextwake"></div></div>
     </div>
 
@@ -316,6 +316,7 @@ function renderStatus(s) {
     }</tbody></table></div>
     <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.</div>${fund}`;
   if (s.min_volume_usd) $("minvol").textContent = `$${Math.round(s.min_volume_usd / 1e6)}M`;
+  if (s.brain && s.brain.sponsored > 0) $("costs-note").textContent += `, plus ${usd(s.brain.sponsored)} thinking paid by you`;
   renderBrain(s.brain);
 }
 
@@ -339,6 +340,8 @@ function renderBrain(b) {
   $("style").textContent = b.style || "";
   $("style").classList.toggle("hidden", b.style !== "full send");
   $("style").title = "Loose guardrails: no trade or daily loss limits, up to 25% risk per trade. Only the floor and budget hold it back.";
+  const lp = b.learning && b.learning.active ? b.learning : null;
+  $("spend-label").textContent = lp ? `Learning phase, paid by you, until ${when(lp.end)}` : "Thinking budget this month";
   $("spend").textContent = `$${b.spent_this_month.toFixed(2)} of $${b.budget.toFixed(2)}`;
   const used = Math.min(1, b.spent_this_month / b.budget);
   $("spendbar").style.width = (used * 100) + "%";

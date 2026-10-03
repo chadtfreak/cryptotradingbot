@@ -227,7 +227,44 @@ class ClaudeBrain:
     def month_spend(self, eng, now: int) -> float:
         return -eng.store.ledger_total_since("ai_cost", month_start(now))
 
+    # Learning phase: a set period where the owner pays for the thinking, not Claude's balance
+    def learning(self, eng, now: int) -> dict | None:
+        """The learning phase, started on first use if one is configured. None if there isn't one."""
+        st = eng.store
+        phase = st.get("learning_phase")
+        if phase is None:
+            if self.c.learning_phase_budget_usd <= 0 or st.get("learning_phase_ended"):
+                return None
+            phase = {"start": now, "end": now + self.c.learning_phase_days * 86400, "budget": self.c.learning_phase_budget_usd}
+            st.set("learning_phase", phase)
+            st.log(f"Learning phase started: for the next {self.c.learning_phase_days} days my owner pays for my thinking, up to "
+                   f"${phase['budget']:.0f}, so I can use my best model and learn as fast as possible. It doesn't come out of my balance.", ts=now)
+        spent = -st.ledger_total_since("ai_sponsored", phase["start"])
+        active = now < phase["end"] and spent < phase["budget"] - 0.5
+        if not active and not st.get("learning_phase_ended"):
+            st.set("learning_phase_ended", now)
+            st.log(f"Learning phase over (${spent:.2f} of ${phase['budget']:.0f} used). From here I pay for my own thinking again.",
+                   level="warning", ts=now)
+        return {**phase, "spent": spent, "active": active}
+
+    def pay(self, eng, now: int, cost: float, note: str) -> None:
+        """Thinking comes out of Claude's balance, except during the owner-funded learning phase."""
+        phase = self.learning(eng, now)
+        if phase and phase["active"]:
+            eng.store.add_ledger(now, "ai_sponsored", -cost, note)
+        else:
+            eng.charge(now, "ai_cost", cost, note)
+
     def tier(self, eng, now: int, price=None) -> dict:
+        phase = self.learning(eng, now)
+        if phase and phase["active"]:
+            start, floor = eng.contributed, self.s.survival.floor_usd
+            health = max(0.0, min(1.0, (eng.equity(price) - floor) / max(start - floor, 1e-9)))
+            base = {"spent": phase["spent"], "budget": phase["budget"], "health": health, "pace": 0.0, "earned_smart": True,
+                    "learning": True}
+            if health < 0.25:
+                return {**base, "name": "survival", "model": self.c.lean_model, "searches": 0, "heartbeat": False}
+            return {**base, "name": "sharp", "model": self.c.smart_model, "searches": self.c.web_searches_per_wake, "heartbeat": True}
         allowance = self.career.allowance(eng.store, now)
         budget = min(allowance["amount"], self.c.monthly_budget_usd)
         spent = self.month_spend(eng, now)
@@ -407,7 +444,7 @@ class ClaudeBrain:
             tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": tier["searches"]})
         user = self.build_context(eng, candles, now, tier, reason)
         content, cost, answered_by = self._call(key, model, self.system_prompt(eng), user, tools)
-        eng.charge(now, "ai_cost", cost, f"{answered_by}: {reason}")
+        self.pay(eng, now, cost, f"{answered_by}: {reason}")
 
         call = next((b for b in content if getattr(b, "type", None) == "tool_use" and b.name == "submit_decisions"), None)
         if call is None:
@@ -471,7 +508,9 @@ class ClaudeBrain:
         funding = -st.ledger_total("funding")
         if funding:
             lines.append(f"- Funding {'paid' if funding >= 0 else 'received'} so far: {abs(funding):.3f} USDC.")
-        lines.append(f"- Thinking budget: spent ${tier['spent']:.2f} of ${tier['budget']:.2f} this month. Mode: {tier['name']}. "
+        if tier.get("learning"):
+            lines.append("- Learning phase: your owner is paying for your thinking for now, so use it to learn fast: make every shadow call count.")
+        lines.append(f"- Thinking budget: spent ${tier['spent']:.2f} of ${tier['budget']:.2f} {'in the learning phase' if tier.get('learning') else 'this month'}. Mode: {tier['name']}. "
                      f"Average running cost ${burn:.3f}/day, about {runway:.0f} days to the floor if you make nothing.")
         if start_price and eng.last_price:
             lines.append(f"- Since you were born ETH is {(eng.last_price / start_price - 1) * 100:+.1f}% and you are "
@@ -638,7 +677,7 @@ class ClaudeBrain:
             st.set("claude_last_review_ts", now - (self.c.review_every_days - 1) * 86400)  # try again tomorrow
             st.log(f"Weekly review failed ({exc}). Will try again tomorrow.", level="error", ts=now)
             return
-        eng.charge(now, "ai_cost", cost, f"{answered_by}: weekly review")
+        self.pay(eng, now, cost, f"{answered_by}: weekly review")
         st.set("claude_last_review_ts", now)
         call = next((b for b in content if getattr(b, "type", None) == "tool_use" and b.name == "submit_review"), None)
         if call is None:
@@ -668,7 +707,9 @@ class ClaudeBrain:
             "key_from_env": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "tier": tier["name"] if tier else None,
             "model": tier["model"] if tier else None,
-            "spent_this_month": self.month_spend(eng, now),
+            "spent_this_month": tier["spent"] if tier else self.month_spend(eng, now),
+            "learning": self.learning(eng, now),
+            "sponsored": -eng.store.ledger_total("ai_sponsored"),
             "budget": tier["budget"] if tier else self.c.monthly_budget_usd,
             "cap": self.c.monthly_budget_usd,
             "last_wake": eng.store.get("claude_last_wake_ts"),

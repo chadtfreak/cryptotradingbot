@@ -182,6 +182,7 @@ class PracticeRun:
         try:
             self.run()
         except Exception as exc:
+            self._record_cost()
             self.status(state="failed", message=f"{type(exc).__name__}: {exc}", cost=self.cost)
             self.store.log(f"Practice run failed ({exc}). Spent ${self.cost:.2f}.", level="error")
 
@@ -247,12 +248,18 @@ class PracticeRun:
         lessons, review = self._review(results, summary)
         self.store.set("practice_lessons", lessons)
         self.store.set("practice_report", {"summary": review, "stats": summary, "results": results[-200:]})
+        self._record_cost()
         self.status(state="done", cost=round(self.cost, 3), message=review, finished=int(time.time()))
         self.store.log(f"Practice run finished: {summary['taken']} trades from {summary['scenarios']} moments, "
                        f"{summary['total_r']:+.1f}R in total ({summary['expectancy']:+.2f}R per trade)"
                        + (f", lean calls right {summary['lean_calls']['right_pct']:.0f}% of {summary['lean_calls']['marked']}" if summary.get("lean_calls") else "")
                        + f", cost ${self.cost:.2f}. {review}",
                        level="thought")
+
+    def _record_cost(self) -> None:
+        """Noted in the ledger as owner-paid, so it counts towards the learning phase but not Claude's balance."""
+        if self.cost:
+            self.store.add_ledger(int(time.time()), "ai_sponsored", -self.cost, f"Practice run, {self.n} moments")
 
     def _review(self, results, summary):
         lines = [json.dumps(summary, indent=1), "", "Each decision (coin hidden from you at the time is shown here):"]

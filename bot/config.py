@@ -76,6 +76,8 @@ class ClaudeSettings:
     review_every_days: int = 7
     web_searches_per_wake: int = 2
     allow_mainnet: bool = False  # real money stays locked until the testnet run has proved itself
+    learning_phase_budget_usd: float = 0.0  # owner-funded thinking for a learning phase (0 = none)
+    learning_phase_days: int = 30
 
 
 @dataclass
