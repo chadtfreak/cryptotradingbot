@@ -377,3 +377,38 @@ def test_summarise_calibration():
           {"taken": False, "move_up_pct": 12, "move_down_pct": 1, "end_pct": 10}]
     s = summarise(rs)
     assert s["taken"] == 2 and s["calibration"]["over 60%"]["actual"] == 50 and s["passed_on_10pct_moves"] == 1
+
+
+# Exchange hiccups
+
+def test_brief_502_is_retried_quietly_then_reported(monkeypatch):
+    import httpx
+    eng, fake, market, clock = make_multi([tool_reply("submit_decisions", actions())] * 3)
+    eng.tick()
+    req = httpx.Request("POST", "https://api.hyperliquid.xyz/info")
+    err = httpx.HTTPStatusError("502", request=req, response=httpx.Response(502, request=req))
+
+    def boom():
+        raise err
+    monkeypatch.setattr(market, "mids", boom)
+    eng.tick(); eng.tick()
+    assert eng.last_error is None and not any(e["level"] in ("error", "warning") for e in eng.store.events())
+    eng.tick()
+    assert "Can't reach Hyperliquid" in eng.last_error
+    monkeypatch.undo()
+    eng.tick()
+    assert eng.last_error is None and "Connection is back" in eng.store.events()[0]["message"]
+
+
+def test_market_post_retries_server_errors(monkeypatch):
+    import httpx
+    from bot.market import HyperliquidMarket
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(502) if len(calls) < 3 else httpx.Response(200, json={"ETH": "100"})
+    m = HyperliquidMarket()
+    m.client = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr("bot.market.time.sleep", lambda s: None)
+    assert m.mids() == {"ETH": 100.0} and len(calls) == 3

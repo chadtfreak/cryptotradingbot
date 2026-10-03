@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+import time
+
 import httpx
 
 KRAKEN = "https://api.kraken.com/0/public"
@@ -103,10 +105,20 @@ class HyperliquidMarket:
         self._universe: tuple[float, list[dict]] | None = None
         self.last_funding: float | None = None
 
-    def _post(self, body: dict):
-        resp = self.client.post(self.url, json=body)
-        resp.raise_for_status()
-        return resp.json()
+    def _post(self, body: dict, attempts: int = 3):
+        """Hyperliquid's API gives the odd 502 or timeout. Retry those quickly before giving up."""
+        for attempt in range(attempts):
+            try:
+                resp = self.client.post(self.url, json=body)
+                if resp.status_code >= 500 and attempt < attempts - 1:
+                    time.sleep(1 + attempt)
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.TransportError:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(1 + attempt)
 
     def mids(self) -> dict[str, float]:
         return {k: float(v) for k, v in self._post({"type": "allMids"}).items() if not k.startswith("@")}

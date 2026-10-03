@@ -16,6 +16,21 @@ from .config import Settings
 from .store import Store
 from .strategy import Decision, on_candle_close, position_size, stop_hit
 
+
+def is_blip(exc: Exception) -> bool:
+    """A network hiccup or exchange outage rather than a bug."""
+    import httpx
+
+    if isinstance(exc, httpx.TransportError):
+        return True
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (429, 500, 502, 503, 504)
+
+
+def short(exc: Exception) -> str:
+    import httpx
+
+    return f"error {exc.response.status_code}" if isinstance(exc, httpx.HTTPStatusError) else type(exc).__name__
+
 RUNNING, PAUSED, STOPPED, DEAD = "running", "paused", "stopped", "dead"
 COST_INTERVAL = 3600  # charge running costs hourly
 EQUITY_BUCKET = 300  # keep one equity point per 5 minutes
@@ -69,6 +84,7 @@ class Engine:
         self.lock = threading.Lock()
         self.prices: dict[str, float] = {}
         self.last_error: str | None = None
+        self.failures = 0  # ticks failed in a row
         self._leverage_set: set[str] = set()
         self._init_account()
 
@@ -175,10 +191,19 @@ class Engine:
                 return
             try:
                 self._tick()
-                self.last_error = None
+                if self.failures >= 3:
+                    self.store.log("Connection is back. Carrying on.")
+                self.failures, self.last_error = 0, None
             except Exception as exc:  # network blips etc. Log and try again next poll.
-                self.last_error = str(exc)
-                self.store.log(f"Tick failed: {exc}", level="error")
+                self.failures += 1
+                if self.failures < 3 and is_blip(exc):
+                    return  # a brief outage at the exchange: stops are on the exchange, just try again next minute
+                if self.failures == 3 and is_blip(exc):
+                    self.last_error = f"Can't reach Hyperliquid's market data ({exc}). Retrying every minute."
+                    self.store.log(f"Can't reach Hyperliquid for the last few minutes ({short(exc)}). Retrying every minute.", level="warning")
+                elif not is_blip(exc):
+                    self.last_error = str(exc)
+                    self.store.log(f"Tick failed: {exc}", level="error")
 
     def _tick(self) -> None:
         now = int(self.clock())
