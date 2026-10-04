@@ -25,11 +25,11 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Professional safeguards. Claude halves its risk after a 10% drop from its
-  best and pauses new trades for a day at 20%. Its positions can't add up to
-  more than 60% of the account as one bet on BTC. A go-live checklist shows
-  progress towards real money, a weekly report arrives every Monday, and
-  entries use cheaper limit orders first.
+  A tidier dashboard. Claude's view is split into four pages: Today (money,
+  positions, latest thinking, chart and activity), Learning (scorecard,
+  scanner, lessons, practice run), Progress (go-live checklist, weekly report,
+  career, trades) and Settings (thinking budget, API key, venue, bankroll).
+  It's about a third as long on a phone.
 dependencies: []
 path: ""
 defaultUsername: ""

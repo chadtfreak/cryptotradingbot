@@ -111,6 +111,25 @@
   .split > * { min-width: 0; }
   @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
   table.compact th, table.compact td { padding: 8px 6px; }
+  .pages { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 14px; overflow-x: auto; }
+  .pages button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); padding: 10px 14px; white-space: nowrap; }
+  .pages button.on { color: var(--ink); border-bottom-color: var(--claude); }
+  .strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+  .offer-note { background: color-mix(in srgb, var(--good) 12%, var(--panel)); border: 1px solid var(--good); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  #report-pick { font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); margin-bottom: 8px; }
+  .page-off { display: none !important; }
+  a { color: var(--accent); }
+  @media (max-width: 600px) {
+    h1 { font-size: 19px; }
+    .controls button, .controls .btn { padding: 6px 10px; font-size: 13px; }
+    .race { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .race .card { flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; }
+    .race .who { font-size: 13px; }
+    .race .who small { display: none; }
+    .race .pct { font-size: 17px; }
+    .pages button { padding: 10px 9px; font-size: 14px; }
+    .kpi .value { font-size: 22px; }
+  }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -130,82 +149,55 @@
 
   <div class="tabs" id="tabs"></div>
   <div class="banner" id="banner"></div>
-
   <section class="grid race" id="race"></section>
+  <nav class="pages hidden" id="pages" aria-label="Sections">
+    <button data-page="today" class="on">Today</button><button data-page="learning">Learning</button><button data-page="progress">Progress</button><button data-page="settings">Settings</button>
+  </nav>
 
-  <section class="card brain hidden" id="brain">
-    <h2>Claude's brain</h2>
-    <div class="brain-grid">
-      <div><div class="label">Mode</div><div class="value"><span id="tier" class="pill">-</span> <span id="style" class="pill dead hidden"></span> <span id="model" class="sub"></span></div></div>
-      <div><div class="label" id="spend-label">Thinking budget this month</div><div class="value" id="spend">-</div><div class="bar"><div id="spendbar" style="width:0"></div></div></div>
-      <div><div class="label">Last check</div><div class="value" id="lastwake">-</div><div class="sub" id="nextwake"></div></div>
-    </div>
-
-    <div class="thought hidden" id="thought"></div>
-    <div id="keybox" class="hidden">
-      <div class="label"><strong>Anthropic API key</strong></div>
-      <div class="sub" id="keystate"></div>
-      <div class="keyform" id="keyform">
-        <input id="keyinput" type="password" placeholder="sk-ant-..." autocomplete="off">
-        <button id="keysave">Save key</button>
-      </div>
-      <div class="msg" id="keymsg"></div>
-    </div>
-    <div style="text-align:right"><a href="#" id="keychange" class="sub hidden">Change API key</a></div>
-    <div class="career" id="career">
-      <div class="label"><strong>Career</strong> <span id="level" class="pill level">-</span> <span id="probation" class="pill probation hidden">probation</span></div>
-      <div class="career-grid" style="margin-top:8px">
-        <div><div class="label sub">This month's thinking allowance</div><div class="value" id="allowance">-</div><div class="sub" id="allowance-why"></div></div>
-        <div><div class="label sub">Next promotion</div><div class="value" id="nextlevel">-</div><div class="sub">30 days of at least +10%, beating the maths bot and holding ETH, with 5+ closed trades. You approve it.</div></div>
-      </div>
-      <div class="offer hidden" id="offer"></div>
-    </div>
-    <div class="venue">
-      <div class="label"><strong>Where Claude trades</strong> <span id="venuepill" class="pill paper">paper</span> <a href="#" id="venuechange" class="sub">Change</a></div>
-      <div class="sub" id="venueinfo"></div>
-      <div class="sub" id="bankrollinfo" style="margin-top:6px"></div>
-      <div class="keyform" id="bankrollform">
-        <input id="bankrollamt" type="number" min="1" step="1" placeholder="Amount (USDC)" aria-label="Amount to add to Claude's bankroll" style="max-width:180px">
-        <button id="bankrolladd">Add to bankroll</button>
-        <button id="bankrollfull" class="hidden">Use the whole account</button>
-      </div>
-      <div class="msg" id="bankrollmsg"></div>
-      <div id="venueform" class="hidden">
-        <div class="venue-opts">
-          <label><input type="radio" name="venue" value="paper"> Paper trading (pretend money)</label>
-          <label><input type="radio" name="venue" value="testnet"> Hyperliquid testnet (free test money, real orders)</label>
-          <label id="mainnetopt"><input type="radio" name="venue" value="mainnet"> Hyperliquid (real money)</label>
-        </div>
-        <div id="hlfields" class="hidden">
-          <input id="hlaccount" placeholder="Main wallet address (0x...)" autocomplete="off">
-          <input id="hlkey" type="password" placeholder="API wallet private key (0x...)" autocomplete="off">
-          <div class="sub">The API wallet can trade but can't withdraw. Its key is stored only on this device. Never paste your main wallet's key here.</div>
-        </div>
-        <div class="sub warnline">Switching starts a new life on that venue. Claude keeps its lessons, and the old history is archived. Close any open position first.</div>
-        <button id="venuesave">Switch</button>
-        <div class="msg" id="venuemsg"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="grid kpis">
+  <!-- Today: the money first, then what Claude is thinking -->
+  <section class="grid kpis" data-page="today">
     <div class="card kpi"><div class="label">Equity</div><div class="value" id="equity">-</div><div class="note" id="equity-note"></div></div>
     <div class="card kpi"><div class="label">Total P&amp;L</div><div class="value" id="pnl">-</div><div class="note">after trading and running costs</div></div>
-    <div class="card kpi"><div class="label">Trading P&amp;L</div><div class="value" id="trading-pnl">-</div><div class="note">what the trading earned, after funding</div></div>
-    <div class="card kpi"><div class="label">Running costs paid</div><div class="value" id="costs">-</div><div class="note" id="costs-note"></div></div>
+    <div class="card kpi"><div class="label">Trading P&amp;L</div><div class="value" id="trading-pnl">-</div><div class="note">what the trades made, after fees and funding</div></div>
     <div class="card kpi"><div class="label">Life left</div><div class="value" id="runway">-</div><div class="note" id="runway-note"></div><div class="bar"><div id="lifebar" style="width:0"></div></div></div>
   </section>
-
-  <section class="grid main">
+  <div class="offer-note hidden" id="offer-note" data-page="today" data-claude="1"></div>
+  <section class="card" data-page="today" style="margin-bottom:14px"><h2>Positions</h2><div id="position"></div></section>
+  <section class="card brain" id="brain" data-page="today" data-claude="1">
+    <div class="strip">
+      <h2 style="margin:0">Claude's latest thinking</h2>
+      <span><span id="tier" class="pill">-</span> <span id="style" class="pill dead hidden"></span> <span id="model" class="sub"></span></span>
+      <span class="sub">Last check <strong id="lastwake">-</strong>. <span id="nextwake"></span></span>
+    </div>
+    <div class="thought hidden" id="thought"></div>
+  </section>
+  <section class="grid main" data-page="today">
     <div class="card"><h2>Equity</h2><div class="chartbox"><canvas id="chart"></canvas></div></div>
-    <div class="card"><h2>Positions</h2><div id="position"></div></div>
+    <div class="card"><h2>What I'm thinking</h2><div class="log" id="events"></div></div>
   </section>
 
-  <section class="split hidden" id="claude-extra">
-    <div class="card"><h2>Market scanner</h2><div class="sub" style="margin-bottom:8px">The coins Claude finds most interesting right now, out of every coin trading over <span id="minvol">$20M</span> a day. &#9650; means it just broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate. Setup shows any backtested playbook setup firing right now.</div><div class="tablewrap" id="scanner"></div></div>
-    <div class="card">
+  <!-- Learning: how Claude is getting better -->
+  <section class="card" id="scorecard-card" data-page="learning" data-claude="1" style="margin-bottom:14px">
+    <h2>Scorecard</h2>
+    <div class="sub" style="margin-bottom:10px">Real trades and shadow calls (quick predictions marked against live prices). R is the result in multiples of what was risked: +2R made twice what it stood to lose.</div>
+    <div class="split" style="margin-bottom:0">
+      <div><div class="tablewrap" id="score-setups"></div><div class="sub" id="score-calib" style="margin-top:8px"></div></div>
+      <div><div class="label"><strong>Latest marked calls</strong></div><div class="tablewrap" id="score-calls"></div>
+        <div class="label" style="margin-top:12px"><strong>Lessons from closed trades</strong></div><div id="score-lessons" class="sub"></div></div>
+    </div>
+  </section>
+  <section class="card" data-page="learning" data-claude="1" style="margin-bottom:14px"><h2>Market scanner</h2>
+    <div class="sub" style="margin-bottom:8px">The most interesting coins trading over <span id="minvol">$20M</span> a day. &#9650; broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate. Setup is any backtested setup firing now.</div>
+    <div class="tablewrap" id="scanner"></div></section>
+  <section class="split" data-page="learning" data-claude="1">
+    <div class="card" id="lessons-card">
+      <h2>Lessons learned</h2>
+      <div class="sub" id="lessons-meta"></div>
+      <div class="lessons" id="lessons"></div>
+    </div>
+    <div class="card" id="claude-extra">
       <h2>Practice run</h2>
-      <div class="sub">Claude trades 60 random moments from the last two years with the coin and dates hidden, and calls which way each one goes even when it doesn't trade. Then it gets marked on what actually happened and writes up its lessons. Costs about $2 to $5 of Anthropic credit, billed to your Anthropic account, not the bot.</div>
+      <div class="sub">Claude trades 60 hidden moments from history, calls each one, then gets marked and writes up lessons. About $2 to $5, billed to your Anthropic account.</div>
       <div class="practice-form" id="practice-form">
         <input id="practice-n" type="number" min="10" max="150" value="60" aria-label="Number of scenarios">
         <span class="sub">moments</span>
@@ -216,35 +208,72 @@
     </div>
   </section>
 
-  <section class="card hidden" id="scorecard-card" style="margin-bottom:14px">
-    <h2>Scorecard</h2>
-    <div class="sub" style="margin-bottom:10px">How Claude is really doing. Shadow calls are quick predictions it makes every time it wakes, marked automatically against live prices, so it learns from far more than its real trades. R is the result in multiples of what was risked: +2R means it made twice what it stood to lose.</div>
-    <div class="split" style="margin-bottom:0">
-      <div><div class="tablewrap" id="score-setups"></div><div class="sub" id="score-calib" style="margin-top:8px"></div></div>
-      <div><div class="label"><strong>Latest marked calls</strong></div><div class="tablewrap" id="score-calls"></div>
-        <div class="label" style="margin-top:12px"><strong>Lessons from closed trades</strong></div><div id="score-lessons" class="sub"></div></div>
-    </div>
-  </section>
-
-  <section class="split hidden" id="pro-cards">
+  <!-- Progress: is it ready for real money? -->
+  <section class="split" id="pro-cards" data-page="progress" data-claude="1">
     <div class="card"><h2>Go-live checklist</h2>
-      <div class="sub" style="margin-bottom:8px">Pass marks on testnet before real money is worth considering. Unlocking real money is still your call.</div>
+      <div class="sub" style="margin-bottom:8px">Pass marks before real money is worth considering. Unlocking it is still your call.</div>
       <div id="golive"></div></div>
     <div class="card"><h2>Weekly report</h2>
       <div class="sub" style="margin-bottom:8px">Built every Monday (UTC) from Claude's own records.</div>
-      <select id="report-pick" class="hidden" aria-label="Choose a week" style="font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);margin-bottom:8px"></select>
+      <select id="report-pick" class="hidden" aria-label="Choose a week"></select>
       <div id="report"></div></div>
   </section>
-
-  <section class="grid main">
-    <div class="card"><h2>Trades</h2><div class="tablewrap" id="trades"></div></div>
-    <div class="card"><h2>What I'm thinking</h2><div class="log" id="events"></div></div>
+  <section class="card" id="career" data-page="progress" data-claude="1" style="margin-bottom:14px">
+    <h2>Career <span id="level" class="pill level">-</span> <span id="probation" class="pill probation hidden">probation</span></h2>
+    <div class="career-grid">
+      <div><div class="label sub">This month's thinking allowance</div><div class="value" id="allowance">-</div><div class="sub" id="allowance-why"></div></div>
+      <div><div class="label sub">Next promotion</div><div class="value" id="nextlevel">-</div><div class="sub">30 days of at least +10%, beating the maths bot and holding ETH, with 5+ closed trades. You approve it.</div></div>
+    </div>
+    <div class="offer hidden" id="offer"></div>
   </section>
+  <section class="card" data-page="progress" data-maths="1" style="margin-bottom:14px"><h2>Trades</h2><div class="tablewrap" id="trades"></div></section>
 
-  <section class="card hidden" id="lessons-card">
-    <h2>Lessons learned</h2>
-    <div class="sub" id="lessons-meta"></div>
-    <div class="lessons" id="lessons"></div>
+  <!-- Settings -->
+  <section class="split" data-page="settings" data-claude="1">
+    <div class="card"><h2>Thinking budget</h2>
+      <div class="label" id="spend-label">Thinking budget this month</div><div class="value" id="spend">-</div><div class="bar"><div id="spendbar" style="width:0"></div></div>
+      <div style="margin-top:14px"><div class="label">Running costs paid from its balance</div><div class="value" id="costs">-</div><div class="sub" id="costs-note"></div></div>
+    </div>
+    <div class="card"><h2>Anthropic API key</h2>
+      <div id="keybox" class="hidden">
+        <div class="sub" id="keystate"></div>
+        <div class="keyform" id="keyform">
+          <input id="keyinput" type="password" placeholder="sk-ant-..." autocomplete="off">
+          <button id="keysave">Save key</button>
+        </div>
+        <div class="msg" id="keymsg"></div>
+      </div>
+      <div class="sub" id="keyok">A key is saved on this device.</div>
+      <a href="#" id="keychange" class="sub hidden">Change API key</a>
+    </div>
+  </section>
+  <section class="card venue-card" data-page="settings" data-claude="1" style="margin-bottom:14px">
+    <h2>Where Claude trades <span id="venuepill" class="pill paper">paper</span></h2>
+    <div class="sub" id="venueinfo"></div>
+    <div style="margin-top:6px"><a href="#" id="venuechange" class="sub">Change where it trades</a></div>
+    <div id="venueform" class="hidden">
+      <div class="venue-opts">
+        <label><input type="radio" name="venue" value="paper"> Paper trading (pretend money)</label>
+        <label><input type="radio" name="venue" value="testnet"> Hyperliquid testnet (free test money, real orders)</label>
+        <label id="mainnetopt"><input type="radio" name="venue" value="mainnet"> Hyperliquid (real money)</label>
+      </div>
+      <div id="hlfields" class="hidden">
+        <input id="hlaccount" placeholder="Main wallet address (0x...)" autocomplete="off">
+        <input id="hlkey" type="password" placeholder="API wallet private key (0x...)" autocomplete="off">
+        <div class="sub">The API wallet can trade but can't withdraw. Its key is stored only on this device. Never paste your main wallet's key here.</div>
+      </div>
+      <div class="sub warnline">Switching starts a new life on that venue. Claude keeps its lessons, and the old history is archived. Close any open position first.</div>
+      <button id="venuesave">Switch</button>
+      <div class="msg" id="venuemsg"></div>
+    </div>
+    <h2 style="margin-top:18px">Bankroll</h2>
+    <div class="sub" id="bankrollinfo"></div>
+    <div class="keyform" id="bankrollform">
+      <input id="bankrollamt" type="number" min="1" step="1" placeholder="Amount (USDC)" aria-label="Amount to add to Claude's bankroll" style="max-width:180px">
+      <button id="bankrolladd">Add to bankroll</button>
+      <button id="bankrollfull" class="hidden">Use the whole account</button>
+    </div>
+    <div class="msg" id="bankrollmsg"></div>
   </section>
 </div>
 
@@ -347,11 +376,7 @@ const TIER_TEXT = {
 };
 
 function renderBrain(b) {
-  $("brain").classList.toggle("hidden", !b);
-  $("lessons-card").classList.toggle("hidden", !b);
-  $("claude-extra").classList.toggle("hidden", !b);
-  $("scorecard-card").classList.toggle("hidden", !b);
-  $("pro-cards").classList.toggle("hidden", !b);
+  showPages(!!b);
   if (!b) return;
   $("tier").textContent = b.tier || "-";
   $("tier").className = "pill " + (b.tier || "");
@@ -370,8 +395,12 @@ function renderBrain(b) {
   $("nextwake").textContent = b.next_check ? `Next scheduled check ${when(b.next_check)}, sooner if the market moves` : "";
 
   const d = b.last_decision;
-  $("thought").classList.toggle("hidden", !d);
-  if (d) {
+  $("thought").classList.toggle("hidden", !d && b.key_set);
+  if (!b.key_set) {
+    $("thought").innerHTML = `Claude needs an Anthropic API key before it can think. <a href="#" id="key-go">Add it on the Settings page</a>.`;
+    $("key-go").onclick = (e) => { e.preventDefault(); goPage("settings"); };
+  }
+  if (d && b.key_set) {
     $("thought").innerHTML = `<div class="meta">Latest thinking, ${when(d.ts)}, ${esc((d.model || "").replace("claude-", ""))}, cost $${(d.cost || 0).toFixed(3)}. Woken because: ${esc(d.wake_reason)}</div>
       <div><span class="action">${esc((d.action || "no decision").toUpperCase().replace("_", " "))}</span>${d.confidence ? `<span class="sub">(${esc(d.confidence)} confidence)</span> ` : ""}${esc(d.reasoning)}</div>
       ${d.journal ? `<div class="journal">Note to self: ${esc(d.journal)}</div>` : ""}`;
@@ -383,6 +412,8 @@ function renderBrain(b) {
     : `Claude needs an API key to think. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>, and set a monthly spend limit there as a backstop.`;
   $("keyform").classList.toggle("hidden", b.key_from_env);
   $("keychange").classList.toggle("hidden", !b.key_set || b.key_from_env || showKeyForm);
+  $("keyok").classList.toggle("hidden", !b.key_set || showKeyForm);
+  $("keyok").textContent = b.key_from_env ? "Using the key set in the app's settings." : "A key is saved on this device.";
 
   const v = b.venue || "paper";
   $("venuepill").textContent = v;
@@ -481,6 +512,11 @@ function renderCareer(c) {
   $("nextlevel").textContent = c.next_level ? `${c.next_level} (+$${Math.round(c.next_amount).toLocaleString()} bankroll)` : "Top of the ladder";
   const o = c.offer;
   $("offer").classList.toggle("hidden", !o);
+  $("offer-note").classList.toggle("hidden", !o);
+  if (o) {
+    $("offer-note").innerHTML = `<strong>Claude has earned a promotion to ${esc(o.name)}.</strong> <a href="#" id="offer-go">Review it on the Progress page</a>`;
+    $("offer-go").onclick = (e) => { e.preventDefault(); goPage("progress"); };
+  }
   if (o) {
     const st = o.stats || {};
     $("offer").innerHTML = `<strong>Claude has earned a promotion to ${esc(o.name)}.</strong>
@@ -528,6 +564,26 @@ function renderPractice(b) {
   $("practice-lessons").textContent = b.practice_lessons ? "What it learned in practice:\n" + b.practice_lessons : "";
 }
 let showKeyForm = false;
+let page = "today";
+try { page = localStorage.getItem("page") || "today"; } catch (e) {}
+
+function showPages(hasBrain) {
+  $("pages").classList.toggle("hidden", !hasBrain);
+  const p = hasBrain ? page : "today";
+  document.querySelectorAll("[data-page]").forEach((el) => {
+    if (el.tagName === "BUTTON") { el.classList.toggle("on", el.dataset.page === p); return; }
+    const show = hasBrain ? el.dataset.page === p : !el.dataset.claude && (el.dataset.page === "today" || el.dataset.maths);
+    el.classList.toggle("page-off", !show);
+  });
+}
+
+function goPage(name) {
+  page = name;
+  try { localStorage.setItem("page", page); } catch (e) {}
+  showPages(true);
+  if (chart) chart.resize();
+}
+document.querySelectorAll("#pages button").forEach((btn) => btn.onclick = () => goPage(btn.dataset.page));
 
 function renderChart(points) {
   if (typeof Chart === "undefined") return;
