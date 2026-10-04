@@ -121,6 +121,16 @@ Real trades come slowly, so a month of trading only teaches a handful of lessons
 - **Trade movement.** Every trade records how far it went for and against before closing, so Claude can tell whether its stops are too tight or it gives back too much.
 - **Outside the charts.** Scheduled US economic news (Claude is woken 45 minutes before and just after big releases), open interest change over 24 hours (tracked by the bot from hourly snapshots), and BTC's share of the crypto market. Liquidation and token unlock data need paid feeds, so they aren't included.
 
+## Professional safeguards (version 1.13)
+
+- **Cut risk after losses.** 10% below its best (measured like a fund's unit price, so top-ups don't count), risk per trade halves until a new high. At 20% below, no new trades for 24 hours, once per drawdown.
+- **BTC bet cap.** All positions together can't behave like more than 60% of equity in BTC, long or short. Each coin's link to BTC is measured from 20 days of 4h moves.
+- **Go-live checklist.** 60+ days, 50+ closed trades, making money after every cost, worst drop under 20%, and beating the maths bot and holding ETH. Shown on the dashboard and to Claude. Unlocking real money is still the owner's decision.
+- **Weekly report.** Built by code every Monday (UTC): return against both rivals, worst drop, trades and results by setup, shadow calls, thinking spend, Claude's review and lessons.
+- **Cheaper entries.** On Hyperliquid, entries start as a post-only limit order at the best bid or ask (0.015% fee) for up to 20 seconds, then the rest goes at market (0.045%). Exits and stops stay market orders so they always fill.
+
+**The plan from here:** freeze the rules for 4 to 6 weeks (or 50 to 100 closed trades), fix only bugs, then judge with the scorecard, weekly reports and checklist, and change one thing at a time.
+
 ## Stages
 
 ### Stage 1: paper trading (built, Claude added in version 1.1)

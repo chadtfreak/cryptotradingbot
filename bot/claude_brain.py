@@ -21,7 +21,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import learning, macro, research, scanner
+from . import golive, learning, macro, report, research, scanner
 from .career import Career, month_key
 from .config import Settings
 from .indicators import atr, ema, rsi
@@ -154,6 +154,12 @@ def rules_text(g, floor: float) -> str:
     rules = [
         f"- Every new trade needs a stop {g.min_stop_distance_pct:g}% to {g.max_stop_distance_pct:g}% away from price (below for longs, above for shorts).",
         f"- Trades are trimmed so that hitting the stop loses at most {g.max_risk_per_trade * 100:g}% of equity across that coin's whole position.",
+        *([f"- When you're {g.drawdown_half_risk_pct:g}% below your best (top-ups don't count), risk per trade is halved until a new high."]
+          if g.drawdown_half_risk_pct else []),
+        *([f"- When you're {g.drawdown_pause_pct:g}% below your best, no new trades for {g.drawdown_pause_hours:g} hours (once per drawdown)."]
+          if g.drawdown_pause_pct else []),
+        *([f"- All open trades together can't behave like more than {g.max_btc_exposure * 100:g}% of equity in BTC, long or short: "
+           "new trades that would push past it are trimmed."] if g.max_btc_exposure else []),
         *([f"- All open trades together can risk at most {g.max_total_risk * 100:g}% of equity (loss from entry if every stop is hit). "
            "Trades at breakeven risk nothing, so moving stops up frees room."] if g.max_total_risk else []),
         "- You can go short." if g.allow_short else "- No shorting: long or cash only.",
@@ -404,6 +410,10 @@ class ClaudeBrain:
 
     # Main entry from the engine
     def decide(self, eng, candles, price: float, now: int):
+        try:
+            report.maybe_build(eng, self.rival, now)
+        except Exception as exc:
+            eng.store.log(f"Couldn't build the weekly report ({exc}).", level="warning", ts=now)
         for r in learning.grade_calls(eng.store, eng.prices, now):
             eng.store.log(f"Shadow call marked: {r['coin']} {'long' if r['dir'] > 0 else 'short'} ({r['setup']}) from {px(r['entry'])} "
                           f"hit its {r['exit'] if r['exit'] != 'time' else 'time limit'} at {px(r['exit_price'])}, {r['r']:+.2f}R.", ts=now)
@@ -582,6 +592,14 @@ class ClaudeBrain:
         lines.append(f"- Thinking budget: spent ${tier['spent']:.2f} of ${tier['budget']:.2f} {'in the learning phase' if tier.get('learning') else 'this month'}. Mode: {tier['name']}. "
                      f"Average running cost ${burn:.3f}/day, about {runway:.0f} days to the floor if you make nothing.")
         lines.append(self._pace_text(eng, now, tier))
+        dd = st.get("drawdown")
+        if dd is not None:
+            text = f"- Drawdown: {dd * 100:.1f}% below your best."
+            if now < (st.get("dd_pause_until") or 0):
+                text += f" New trades are paused for another {(st.get('dd_pause_until') - now) / 3600:.0f}h."
+            elif eng.base_g.drawdown_half_risk_pct and dd * 100 >= eng.base_g.drawdown_half_risk_pct:
+                text += " Risk per trade is halved until you make a new high."
+            lines.append(text)
         if start_price and eng.last_price:
             lines.append(f"- Since you were born ETH is {(eng.last_price / start_price - 1) * 100:+.1f}% and you are "
                          f"{(equity / eng.contributed - 1) * 100:+.1f}%.")
@@ -589,7 +607,8 @@ class ClaudeBrain:
         lines.append(f"- Trades today: {eng.trades_today(now)}" + (f" of {limit} allowed.\n" if limit else " (no limit).\n"))
 
         lines.append("## Your career")
-        lines.append(self.career.context(st, self.rival, now, eng.bankroll_base) + "\n")
+        lines.append(self.career.context(st, self.rival, now, eng.bankroll_base))
+        lines.append(golive.context(golive.check(eng, self.rival, now)) + "\n")
 
         feats = self.scan(eng, now)
         if feats and eng.g.min_volume_usd:
@@ -644,35 +663,12 @@ class ClaudeBrain:
         lines.append("\nDecide now and call submit_decisions.")
         return "\n".join(lines)
 
-    def _beta(self, eng, coin: str) -> float | None:
-        """How much a coin moves for each 1% BTC moves, from the last 20 days of 4h candles. Cached hourly."""
-        cache = getattr(self, "_betas", {})
-        self._betas = cache
-        hour = int(self.clock()) // 3600
-        if coin == "BTC":
-            return 1.0
-        if (coin, hour) in cache:
-            return cache[(coin, hour)]
-        try:
-            a = [c.close for c in eng.market.candles(240, coin=coin, count=121)]
-            b = [c.close for c in eng.market.candles(240, coin="BTC", count=121)]
-            n = min(len(a), len(b))
-            ra = [a[i] / a[i - 1] - 1 for i in range(len(a) - n + 1, len(a))]
-            rb = [b[i] / b[i - 1] - 1 for i in range(len(b) - n + 1, len(b))]
-            mb = sum(rb) / len(rb)
-            var = sum((x - mb) ** 2 for x in rb)
-            beta = sum((x - mb) * (y - sum(ra) / len(ra)) for x, y in zip(rb, ra)) / var if var else None
-        except Exception:
-            beta = None
-        cache[(coin, hour)] = beta
-        return beta
-
     def _portfolio_text(self, eng, equity: float) -> str:
         longs = sum(abs(p["qty"]) * eng.prices.get(c, 0) for c, p in eng.positions.items() if p["qty"] > 0)
         shorts = sum(abs(p["qty"]) * eng.prices.get(c, 0) for c, p in eng.positions.items() if p["qty"] < 0)
         btc_eq, missing = 0.0, []
         for c, p in eng.positions.items():
-            beta = self._beta(eng, c)
+            beta = eng.beta(c)
             if beta is None:
                 missing.append(c)
                 continue
@@ -916,6 +912,8 @@ class ClaudeBrain:
             "decisions": eng.store.decisions(20),
             "career": self.career.summary(eng.store, now, eng.bankroll_base),
             "scorecard": learning.stats(eng.store),
+            "golive": golive.check(eng, self.rival, now),
+            "reports": eng.store.get("weekly_reports") or [],
             "scanner": [{**{k: f[k] for k in ("coin", "price", "ch_24h", "trend", "breakout", "breakdown", "funding_apr", "volume_m")},
                          "setups": [f"{k.replace('_', ' ')} {'long' if d > 0 else 'short'}" for k, d in f.get("setups", [])]} for f in scan],
         }}

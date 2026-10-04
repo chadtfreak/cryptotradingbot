@@ -342,3 +342,83 @@ def test_rejected_management_order_doesnt_break_the_tick():
     eng.tick()
     warns = [e for e in eng.store.events() if "Trade management for ETH couldn't act" in e["message"]]
     assert len(warns) == 1 and eng.last_error is None
+
+
+# Maker-first entries
+
+class MakerExchange:
+    def __init__(self, alo_status, fills_after_polls=None, partial=0.0):
+        self.alo_status, self.orders, self.cancelled = alo_status, [], []
+        self.fills_after, self.partial, self.polls = fills_after_polls, partial, 0
+
+    def order(self, coin, is_buy, sz, px, kind, reduce_only=False):
+        self.orders.append((coin, is_buy, sz, px, kind))
+        if kind["limit"]["tif"] == "Alo":
+            self.sz = sz
+            return {"status": "ok", "response": {"data": {"statuses": [self.alo_status]}}}
+        return {"status": "ok", "response": {"data": {"statuses": [{"filled": {"totalSz": str(sz), "avgPx": "100.5"}}]}}}
+
+    def cancel(self, coin, oid):
+        self.cancelled.append(oid)
+
+
+class MakerInfo:
+    def __init__(self, ex):
+        self.ex = ex
+
+    def meta(self):
+        return {"universe": [{"name": "ETH", "szDecimals": 2}]}
+
+    def l2_snapshot(self, coin):
+        return {"levels": [[{"px": "99.9", "sz": "5"}], [{"px": "100.1", "sz": "5"}]]}
+
+    def all_mids(self):
+        return {"ETH": "100.0"}
+
+    def query_order_by_oid(self, user, oid):
+        ex = self.ex
+        ex.polls += 1
+        if oid in ex.cancelled:
+            return {"status": "order", "order": {"status": "canceled", "order": {"origSz": str(ex.sz), "sz": str(ex.sz - ex.partial)}}}
+        if ex.fills_after is not None and ex.polls >= ex.fills_after:
+            return {"status": "order", "order": {"status": "filled", "order": {"origSz": str(ex.sz), "sz": "0.0"}}}
+        return {"status": "order", "order": {"status": "open", "order": {"origSz": str(ex.sz), "sz": str(ex.sz)}}}
+
+
+def maker_venue(ex):
+    from bot.hyperliquid import HyperliquidVenue
+    v = HyperliquidVenue("testnet", "0x" + "1" * 40, "0x" + "2" * 64, info=MakerInfo(ex), exchange=ex)
+    v._connect = lambda: None
+    return v
+
+
+def test_maker_entry_fills_at_the_bid():
+    ex = MakerExchange({"resting": {"oid": 7}}, fills_after_polls=2)
+    filled, avg, maker = maker_venue(ex).maker_then_market(True, 1.0, "ETH", wait=20, sleep=lambda s: None)
+    assert (filled, avg, maker) == (1.0, 99.9, 1.0)
+    assert ex.orders[0][3] == 99.9 and ex.orders[0][4] == {"limit": {"tif": "Alo"}} and len(ex.orders) == 1
+
+
+def test_maker_entry_part_filled_then_market_for_the_rest():
+    ex = MakerExchange({"resting": {"oid": 7}}, partial=0.4)
+    filled, avg, maker = maker_venue(ex).maker_then_market(True, 1.0, "ETH", wait=0, sleep=lambda s: None)
+    assert ex.cancelled == [7] and maker == pytest.approx(0.4) and filled == pytest.approx(1.0)
+    assert ex.orders[1][4] == {"limit": {"tif": "Ioc"}} and ex.orders[1][2] == pytest.approx(0.6)
+    assert avg == pytest.approx((0.4 * 99.9 + 0.6 * 100.5) / 1.0)
+
+
+def test_maker_entry_rejected_goes_straight_to_market():
+    ex = MakerExchange({"error": "Post only order would have immediately matched"})
+    filled, avg, maker = maker_venue(ex).maker_then_market(False, 1.0, "ETH", wait=20, sleep=lambda s: None)
+    assert maker == 0 and filled == 1.0 and ex.orders[1][4] == {"limit": {"tif": "Ioc"}}
+
+
+def test_live_broker_uses_maker_only_for_entries_and_charges_the_lower_fee():
+    from bot.config import CostSettings
+    from bot.hyperliquid import LiveBroker
+    ex = MakerExchange({"resting": {"oid": 7}}, fills_after_polls=1)
+    broker = LiveBroker(maker_venue(ex), CostSettings(), maker_wait=20)
+    fill = broker.buy(100.0, 100.0, coin="ETH")
+    assert fill.fee == pytest.approx(fill.notional * 0.015 / 100)
+    broker.sell(1.0, 100.0, reduce_only=True, coin="ETH")
+    assert ex.orders[-1][4] == {"limit": {"tif": "Ioc"}}  # exits stay market orders

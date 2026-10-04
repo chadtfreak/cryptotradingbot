@@ -24,7 +24,8 @@ def build_claude(settings, maths: Engine | None, store: Store | None = None) -> 
     broker = None
     if venue["name"] in ("testnet", "mainnet"):
         from .hyperliquid import HyperliquidVenue, LiveBroker
-        broker = LiveBroker(HyperliquidVenue(venue["name"], venue["account"], venue["agent_key"]), settings.costs)
+        broker = LiveBroker(HyperliquidVenue(venue["name"], venue["account"], venue["agent_key"]), settings.costs,
+                            maker_wait=settings.claude.maker_wait_seconds if settings.claude.maker_entries else 0)
     brain = ClaudeBrain(settings)
     brain.rival = maths
     return Engine(settings, HyperliquidMarket(settings.bot.asset), store, broker=broker, brain=brain,

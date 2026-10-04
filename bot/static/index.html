@@ -226,6 +226,16 @@
     </div>
   </section>
 
+  <section class="split hidden" id="pro-cards">
+    <div class="card"><h2>Go-live checklist</h2>
+      <div class="sub" style="margin-bottom:8px">Pass marks on testnet before real money is worth considering. Unlocking real money is still your call.</div>
+      <div id="golive"></div></div>
+    <div class="card"><h2>Weekly report</h2>
+      <div class="sub" style="margin-bottom:8px">Built every Monday (UTC) from Claude's own records.</div>
+      <select id="report-pick" class="hidden" aria-label="Choose a week" style="font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);margin-bottom:8px"></select>
+      <div id="report"></div></div>
+  </section>
+
   <section class="grid main">
     <div class="card"><h2>Trades</h2><div class="tablewrap" id="trades"></div></div>
     <div class="card"><h2>What I'm thinking</h2><div class="log" id="events"></div></div>
@@ -323,7 +333,7 @@ function renderStatus(s) {
         <td>${usd(p.value)}</td><td>${px(p.stop)}${p.stage ? `<br><span class="sub">${p.stage}</span>` : ""}</td><td>${p.target ? px(p.target) : "-"}</td>
         <td class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}${p.r_now != null ? `<br><span class="sub">${p.r_now > 0 ? "+" : ""}${p.r_now.toFixed(1)}R</span>` : ""}</td></tr>`).join("")
     }</tbody></table></div>
-    <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.${s.open_risk != null && s.equity ? ` Open risk if every stop is hit: ${usd(s.open_risk)} (${(s.open_risk / s.equity * 100).toFixed(1)}% of equity${s.max_total_risk ? `, cap ${Math.round(s.max_total_risk * 100)}%` : ""}).` : ""}</div>${fund}`;
+    <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.${s.open_risk != null && s.equity ? ` Open risk if every stop is hit: ${usd(s.open_risk)} (${(s.open_risk / s.equity * 100).toFixed(1)}% of equity${s.max_total_risk ? `, cap ${Math.round(s.max_total_risk * 100)}%` : ""}).` : ""}${s.btc_exposure != null && s.equity ? ` Acts like ${usd(s.btc_exposure, true)} of BTC (${Math.round(s.btc_exposure / s.equity * 100)}% of equity, cap ${Math.round(s.max_btc_exposure * 100)}%).` : ""}${s.drawdown ? ` ${(s.drawdown * 100).toFixed(1)}% below its best.` : ""}${s.dd_pause_until && s.dd_pause_until * 1000 > Date.now() ? ` <strong class="bad">New trades paused until ${when(s.dd_pause_until)}.</strong>` : ""}</div>${fund}`;
   if (s.min_volume_usd) $("minvol").textContent = `$${Math.round(s.min_volume_usd / 1e6)}M`;
   if (s.brain && s.brain.sponsored > 0) $("costs-note").textContent += `, plus ${usd(s.brain.sponsored)} thinking paid by you`;
   renderBrain(s.brain);
@@ -341,6 +351,7 @@ function renderBrain(b) {
   $("lessons-card").classList.toggle("hidden", !b);
   $("claude-extra").classList.toggle("hidden", !b);
   $("scorecard-card").classList.toggle("hidden", !b);
+  $("pro-cards").classList.toggle("hidden", !b);
   if (!b) return;
   $("tier").textContent = b.tier || "-";
   $("tier").className = "pill " + (b.tier || "");
@@ -391,6 +402,45 @@ function renderBrain(b) {
   renderScanner(b.scanner || []);
   renderPractice(b);
   renderScorecard(b.scorecard);
+  renderGolive(b.golive);
+  renderReports(b.reports || []);
+}
+
+function renderGolive(g) {
+  if (!g) return;
+  $("golive").innerHTML = `<div class="value" style="margin-bottom:6px"><strong>${g.passed} of ${g.total}</strong> checks met</div>` + g.items.map((i) => `
+    <div class="event"><span class="${i.ok ? "good" : "sub"}">${i.ok ? "&#10003;" : "&#9675;"}</span> <strong>${esc(i.name)}</strong><br>
+      <span class="sub">${esc(i.have)}</span>
+      ${i.progress != null ? `<div class="bar"><div style="width:${Math.round(i.progress * 100)}%"></div></div>` : ""}</div>`).join("");
+}
+
+let reportIndex = null;
+function renderReports(list) {
+  if (!list.length) { $("report").innerHTML = `<div class="empty">The first report arrives on the first Monday after Claude has a few days of trading.</div>`; return; }
+  const pick = $("report-pick");
+  pick.classList.toggle("hidden", list.length < 2);
+  const day = (ts) => new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const opts = list.map((r, k) => `<option value="${k}">${day(r.start)} to ${day(r.end - 1)}</option>`).reverse().join("");
+  if (pick.innerHTML !== opts) pick.innerHTML = opts;
+  if (reportIndex == null || reportIndex >= list.length) reportIndex = list.length - 1;
+  pick.value = String(reportIndex);
+  pick.onchange = () => { reportIndex = Number(pick.value); renderReports(list); };
+  const r = list[reportIndex];
+  const p = (x) => x == null ? "-" : (x > 0 ? "+" : "") + x.toFixed(1) + "%";
+  const setups = Object.entries(r.by_setup || {}).map(([k, v]) => `${esc(k.replace("_", " "))}: ${v.n} (${usd(v.pnl, true)})`).join(", ");
+  $("report").innerHTML = `<p style="margin:0 0 10px">${esc(r.summary)}</p>
+    <dl>
+      <dt>Return</dt><dd class="${r.return > 0 ? "good" : r.return < 0 ? "bad" : ""}">${p(r.return)}</dd>
+      <dt>Maths bot / holding ETH</dt><dd>${p(r.maths)} / ${p(r.hold)}</dd>
+      <dt>Worst drop</dt><dd>${r.max_drawdown.toFixed(1)}%</dd>
+      <dt>Trades closed</dt><dd>${r.trades}${r.win_rate != null ? `, ${Math.round(r.win_rate)}% winners` : ""}</dd>
+      ${r.best ? `<dt>Best / worst</dt><dd>${esc(r.best.coin)} ${usd(r.best.pnl, true)} / ${esc(r.worst.coin)} ${usd(r.worst.pnl, true)}</dd>` : ""}
+      <dt>Shadow calls</dt><dd>${r.calls}${r.calls_right != null ? `, ${Math.round(r.calls_right)}% right` : ""}</dd>
+      <dt>Thinking</dt><dd>$${r.thinking.toFixed(2)} over ${r.checks} checks</dd>
+    </dl>
+    ${setups ? `<div class="sub" style="margin-top:8px">By setup: ${setups}</div>` : ""}
+    ${r.review ? `<div class="sub" style="margin-top:8px"><strong>Claude's review:</strong> ${esc(r.review)}</div>` : ""}
+    ${(r.lessons || []).length ? `<div class="sub" style="margin-top:8px"><strong>Lessons:</strong> ${r.lessons.map(esc).join(" ")}</div>` : ""}`;
 }
 
 function renderScorecard(sc) {

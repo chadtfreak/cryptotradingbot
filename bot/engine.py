@@ -110,9 +110,43 @@ class Engine:
     # Guardrails, tightened while on probation
     @property
     def g(self):
+        g = self.base_g
         if self.store.get("probation"):
-            return dataclasses.replace(self.base_g, max_risk_per_trade=self.base_g.max_risk_per_trade / 2, max_positions=1)
-        return self.base_g
+            g = dataclasses.replace(g, max_risk_per_trade=g.max_risk_per_trade / 2, max_positions=1)
+        if g.drawdown_half_risk_pct and (self.store.get("drawdown") or 0) * 100 >= g.drawdown_half_risk_pct:
+            g = dataclasses.replace(g, max_risk_per_trade=g.max_risk_per_trade / 2)
+        return g
+
+    # Drawdown: how far below its best it is, measured like a fund's unit price so top-ups don't count
+    def _nav(self, equity: float) -> float:
+        units = self.store.get("units")
+        if not units:
+            units = equity  # start measuring from here: unit price 1.0
+            self.store.set("units", units)
+        return equity / units
+
+    def _track_drawdown(self, now: int, equity: float) -> None:
+        g = self.base_g
+        if not (g.drawdown_half_risk_pct or g.drawdown_pause_pct) or equity <= 0:
+            return
+        nav = self._nav(equity)
+        peak = max(self.store.get("nav_peak") or nav, nav)
+        dd = 1 - nav / peak
+        was = self.store.get("drawdown") or 0
+        self.store.set("nav_peak", peak)
+        self.store.set("drawdown", dd)
+        self.store.set("max_drawdown", max(self.store.get("max_drawdown") or 0, dd))
+        half = g.drawdown_half_risk_pct / 100
+        if half and was < half <= dd:
+            self.store.log(f"Down {dd * 100:.0f}% from my best. Halving my risk per trade until I make a new high.", level="warning", ts=now)
+        if half and was >= half and dd == 0:
+            self.store.log("New high. Full risk per trade restored.", ts=now)
+        pause = g.drawdown_pause_pct / 100
+        if pause and dd >= pause and self.store.get("dd_pause_peak") != peak:
+            self.store.set("dd_pause_peak", peak)
+            self.store.set("dd_pause_until", now + int(g.drawdown_pause_hours * 3600))
+            self.store.log(f"Down {dd * 100:.0f}% from my best. No new trades for {g.drawdown_pause_hours:.0f} hours: step back, "
+                           "then come back at half risk. Stops and exits still work.", level="warning", ts=now)
 
     # Account helpers
     @property
@@ -188,6 +222,37 @@ class Engine:
         self.store.log(f"My owner added {amount:,.2f} USDC to my bankroll, now {base:,.2f}. "
                        f"My survival floor moves to {base * ratio:,.2f}.", level="trade", ts=now)
 
+    def beta(self, coin: str) -> float | None:
+        """How much a coin moves for each 1% BTC moves, from the last 20 days of 4h candles. Cached hourly."""
+        if coin == "BTC":
+            return 1.0
+        key = (coin, int(self.clock()) // 3600)
+        cache = self.__dict__.setdefault("_betas", {})
+        if key in cache:
+            return cache[key]
+        try:
+            a = [c.close for c in self.market.candles(240, coin=coin, count=121)]
+            b = [c.close for c in self.market.candles(240, coin="BTC", count=121)]
+            n = min(len(a), len(b))
+            ra = [a[i] / a[i - 1] - 1 for i in range(len(a) - n + 1, len(a))]
+            rb = [b[i] / b[i - 1] - 1 for i in range(len(b) - n + 1, len(b))]
+            ma, mb = sum(ra) / len(ra), sum(rb) / len(rb)
+            var = sum((x - mb) ** 2 for x in rb)
+            beta = sum((x - mb) * (y - ma) for x, y in zip(rb, ra)) / var if var else None
+        except Exception:
+            beta = None
+        cache[key] = beta
+        return beta
+
+    def btc_exposure(self, exclude: str | None = None) -> float:
+        """What all positions add up to as a bet on BTC, in USDC (unknown links count as 1)."""
+        total = 0.0
+        for c, p in self.positions.items():
+            if c != exclude:
+                b = self.beta(c)
+                total += p["qty"] * self.prices.get(c, 0) * (1.0 if b is None else b)
+        return total
+
     def open_risk(self, exclude: str | None = None) -> float:
         """What every open trade would lose against its entry if all stops were hit. A trade whose
         stop is at breakeven or better risks nothing, which frees room for new trades."""
@@ -217,6 +282,9 @@ class Engine:
         self.store.add_ledger(now, kind, -amount, note)
 
     def deposit(self, now: int, amount: float, note: str) -> None:
+        units = self.store.get("units")
+        if units and self.prices:  # new money buys units at today's price, so it doesn't look like a gain
+            self.store.set("units", units + amount / (self.equity() / units))
         self.store.set("cash", self.cash + amount)
         self.store.add_ledger(now, "deposit", amount, note)
 
@@ -267,6 +335,7 @@ class Engine:
             self._pay_funding(now)
         equity = self.equity()
         self._roll_day(now, equity)
+        self._track_drawdown(now, equity)
         self.store.add_equity(now - now % EQUITY_BUCKET, equity, self.cash, self.qty, price)
 
         if equity < self.floor:
@@ -382,6 +451,11 @@ class Engine:
         if side < 0 and not g.allow_short:
             self.store.log("Guardrail: this bot isn't allowed to short.", level="warning", ts=now)
             return
+        if now < (self.store.get("dd_pause_until") or 0):
+            left = (self.store.get("dd_pause_until") - now) / 3600
+            self.store.log(f"Guardrail: no new trades for another {left:.0f}h after a {g.drawdown_pause_pct:g}% drawdown. Skipping the {coin} {word}.",
+                           level="warning", ts=now)
+            return
         problem = self._book_problem(coin)
         if problem:
             bad = self.store.get("untradeable") or {}
@@ -432,6 +506,18 @@ class Engine:
                 self.store.log(f"Guardrail: {coin} trade trimmed from {d.size_usd:.2f} to {max(notional, 0):.2f} USDC "
                                f"to keep the risk under {g.max_risk_per_trade:.0%} of equity per trade"
                                + (f" and {g.max_total_risk:.0%} across all open trades" if g.max_total_risk else "") + ", with no leverage.", ts=now)
+        if g.max_btc_exposure and notional > 0:
+            beta = self.beta(coin)
+            beta = 1.0 if beta is None else beta
+            if abs(beta) > 0.05:
+                held = self.btc_exposure(exclude=coin) + (pos["qty"] * price * beta if pos else 0.0)
+                sign = 1 if side * beta > 0 else -1
+                room = max(g.max_btc_exposure * equity - sign * held, 0) / abs(beta)
+                if room < notional - 0.01:
+                    self.store.log(f"Guardrail: {coin} trade trimmed from {notional:.2f} to {room:.2f} USDC so all positions together "
+                                   f"don't act like more than {g.max_btc_exposure:.0%} of equity in BTC "
+                                   f"({'long' if sign > 0 else 'short'} side, {coin} moves about {beta:.1f}x BTC).", ts=now)
+                    notional = room
         if notional < self.s.strategy.min_trade_usd:
             self.store.log(f"{d.reason} But the {coin} trade would be too small, so skipping.", ts=now)
             return
@@ -764,6 +850,10 @@ class Engine:
             "exposure": self.exposure() if self.prices else 0.0,
             "max_positions": self.g.max_positions,
             "open_risk": self.open_risk() if self.prices else None,
+            "btc_exposure": self.btc_exposure() if self.prices and self.g.max_btc_exposure else None,
+            "max_btc_exposure": self.g.max_btc_exposure,
+            "drawdown": self.store.get("drawdown"),
+            "dd_pause_until": self.store.get("dd_pause_until"),
             "max_total_risk": self.g.max_total_risk,
             "min_volume_usd": self.g.min_volume_usd,
             "probation": bool(self.store.get("probation")),

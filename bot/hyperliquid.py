@@ -5,6 +5,7 @@ key that lives on the Umbrel can't be used to take the money. Every position get
 real stop order on the exchange, which fires even if the bot is offline.
 """
 
+import time
 from dataclasses import dataclass
 
 from .broker import Fill
@@ -16,6 +17,8 @@ URLS = {
 }
 MARKET_SLIPPAGE = 0.01  # market orders are IOC limits up to 1% through the mid
 STOP_SLIPPAGE = 0.10  # once a stop triggers, accept up to 10% slippage to be sure it fills
+MAKER_FEE_PCT = 0.015  # Hyperliquid's base fee for orders that rest in the book
+MIN_ORDER_USD = 10.0
 MAX_SPREAD_PCT = 1.5  # don't open into a book with a wider gap than this between buyers and sellers
 MAX_OFF_MARKET_PCT = 2.0  # or one priced this far from the real market (testnet books can drift)
 MIN_ORDER_USD = 10.0  # Hyperliquid's minimum order value
@@ -176,6 +179,54 @@ class HyperliquidVenue:
             raise VenueError(f"{coin} market order didn't fill: {status}")
         return float(filled["totalSz"]), float(filled["avgPx"])
 
+    def maker_then_market(self, is_buy: bool, qty: float, coin: str, wait: float, sleep=time.sleep) -> tuple[float, float, float]:
+        """Opens with a post-only limit order at the best bid (buying) or ask (selling), so it pays the
+        cheaper maker fee. Whatever hasn't filled after `wait` seconds is cancelled and done at market.
+        Returns (filled size, average price, size filled as maker)."""
+        dec = self.sz_decimals(coin)
+        sz = round_size(qty, dec)
+        if sz <= 0:
+            raise VenueError("Order size rounds to zero")
+        levels = (self.info.l2_snapshot(coin) or {}).get("levels") or [[], []]
+        side = levels[0] if is_buy else levels[1]
+        if not side:
+            return (*self.market(is_buy, sz, False, coin=coin), 0.0)
+        px = round_price(float(side[0]["px"]), dec)
+        resp = self.exchange.order(coin, is_buy, sz, px, {"limit": {"tif": "Alo"}}, reduce_only=False)
+        if not isinstance(resp, dict) or resp.get("status") != "ok":
+            return (*self.market(is_buy, sz, False, coin=coin), 0.0)
+        status = resp["response"]["data"]["statuses"][0]
+        if "filled" in status:
+            f = status["filled"]
+            maker, avg = float(f["totalSz"]), float(f["avgPx"])
+        elif "resting" in status:
+            oid = status["resting"]["oid"]
+            deadline = time.monotonic() + wait
+            order = self._order(oid)
+            while order.get("status") == "open" and time.monotonic() < deadline:
+                sleep(2)
+                order = self._order(oid)
+            if order.get("status") == "open":
+                self.exchange.cancel(coin, oid)
+                order = self._order(oid)
+            o = order.get("order") or {}
+            maker = float(o.get("origSz", sz)) - float(o.get("sz", sz)) if o else 0.0
+            avg = px
+        else:  # e.g. it would have crossed the spread: just take the market price
+            return (*self.market(is_buy, sz, False, coin=coin), 0.0)
+        rest = round_size(sz - maker, dec)
+        if rest > 0 and rest * px >= MIN_ORDER_USD:
+            got, px2 = self.market(is_buy, rest, False, coin=coin)
+            total = maker + got
+            return total, (maker * avg + got * px2) / total, maker
+        if maker <= 0:
+            raise VenueError(f"{coin} limit order didn't fill and the rest is too small to send")
+        return maker, avg, maker
+
+    def _order(self, oid: int) -> dict:
+        r = self.info.query_order_by_oid(self.account, oid) or {}
+        return r.get("order") or {}
+
     def set_leverage(self, leverage: int = 1, coin: str | None = None) -> None:
         """Sets the exchange's own leverage cap, so it refuses anything above it too."""
         self._check_action(self.exchange.update_leverage(leverage, coin or self.coin, True), "Setting leverage")
@@ -207,15 +258,24 @@ class LiveBroker:
 
     live = True
 
-    def __init__(self, venue: HyperliquidVenue, costs: CostSettings):
+    def __init__(self, venue: HyperliquidVenue, costs: CostSettings, maker_wait: float = 0.0):
         self.venue = venue
         self.costs = costs
+        self.maker_wait = maker_wait  # 0: always market orders
 
-    def _fill(self, side: str, qty: float, price: float) -> Fill:
+    def _fill(self, side: str, qty: float, price: float, maker: float = 0.0) -> Fill:
         notional = qty * price
-        return Fill(side, qty, price, notional, notional * self.costs.pool_fee_pct / 100, 0.0)
+        fee = (maker * MAKER_FEE_PCT + (qty - maker) * self.costs.pool_fee_pct) * price / 100
+        return Fill(side, qty, price, notional, fee, 0.0)
+
+    def _enter(self, is_buy: bool, qty: float, coin: str | None) -> tuple[float, float, float]:
+        if self.maker_wait and hasattr(self.venue, "maker_then_market"):
+            return self.venue.maker_then_market(is_buy, qty, coin or self.venue.coin, self.maker_wait)
+        return (*self.venue.market(is_buy, qty, False, coin=coin), 0.0)
 
     def buy(self, notional: float, market_price: float, reduce_only: bool = False, coin: str | None = None) -> Fill:
+        if not reduce_only:  # opening: try the cheaper limit order first
+            return self._fill("buy", *self._enter(True, notional / market_price, coin))
         qty, px = self.venue.market(True, notional / market_price, reduce_only, coin=coin)
         return self._fill("buy", qty, px)
 
@@ -224,6 +284,8 @@ class LiveBroker:
         return self._fill("buy", qty, px)
 
     def sell(self, qty: float, market_price: float, reduce_only: bool = False, coin: str | None = None) -> Fill:
+        if not reduce_only:  # opening a short: try the cheaper limit order first
+            return self._fill("sell", *self._enter(False, qty, coin))
         qty, px = self.venue.market(False, qty, reduce_only, coin=coin)
         return self._fill("sell", qty, px)
 

@@ -63,6 +63,10 @@ class GuardrailSettings:
     manage_trades: bool = False  # automatic take-profit, breakeven, trailing and time stops
     target_r: float = 2.0  # default take-profit, in multiples of the amount risked
     time_stop_hours: float = 120.0  # close a trade that hasn't reached +1R in this long
+    drawdown_half_risk_pct: float = 0.0  # this far below its peak, risk per trade is halved (0 = off)
+    drawdown_pause_pct: float = 0.0  # this far below its peak, no new trades for a while (0 = off)
+    drawdown_pause_hours: float = 24.0
+    max_btc_exposure: float = 0.0  # positions can't behave like more than this share of equity in BTC, either way (0 = off)
 
 
 @dataclass
@@ -83,6 +87,8 @@ class ClaudeSettings:
     learning_phase_budget_usd: float = 0.0  # owner-funded thinking for a learning phase (0 = none)
     learning_phase_days: int = 30
     macro_feeds: bool = False  # US economic calendar and BTC dominance from free public feeds
+    maker_entries: bool = False  # on a live venue, enter with a post-only limit order first (cheaper fees)
+    maker_wait_seconds: float = 20.0  # how long to wait for it before paying the market price for the rest
 
 
 @dataclass

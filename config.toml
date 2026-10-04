@@ -62,6 +62,10 @@ max_total_risk = 0.10            # at most 10% of equity lost if every open stop
 manage_trades = true             # take-profit, breakeven, trailing and time stops run automatically
 target_r = 2.0                   # default take-profit: twice the amount risked (Claude can set its own)
 time_stop_hours = 120            # close a trade that hasn't reached +1R in 5 days
+drawdown_half_risk_pct = 10      # 10% below its peak: half risk per trade until a new high
+drawdown_pause_pct = 20          # 20% below its peak: no new trades for a day (once per drawdown)
+drawdown_pause_hours = 24
+max_btc_exposure = 0.6           # all positions together can't act like more than 60% of equity in BTC, long or short
 
 [claude]
 enabled = true
@@ -79,4 +83,6 @@ web_searches_per_wake = 2        # news searches allowed per check, when budget 
 allow_mainnet = false            # real-money Hyperliquid stays locked until the testnet run has proved itself
 learning_phase_budget_usd = 40.0 # a one-off learning phase: thinking paid by the owner, not Claude's balance, smartest model throughout
 learning_phase_days = 30         # it starts on first run and ends after this many days or when the budget is used
+maker_entries = true             # enter with a limit order first: 0.015% fees instead of 0.045%
+maker_wait_seconds = 20          # then buy or sell whatever's left at the market price
 macro_feeds = true               # US economic calendar (wakes Claude around big releases) and BTC dominance, from free feeds
