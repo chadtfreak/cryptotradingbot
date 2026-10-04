@@ -187,7 +187,7 @@
     </div>
   </section>
   <section class="card" data-page="learning" data-claude="1" style="margin-bottom:14px"><h2>Market scanner</h2>
-    <div class="sub" style="margin-bottom:8px">The most interesting coins trading over <span id="minvol">$20M</span> a day. &#9650; broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate. Setup is any backtested setup firing now.</div>
+    <div class="sub" style="margin-bottom:8px">The most interesting coins trading over <span id="minvol">$20M</span> a day. &#9650; broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate. Setup is any backtested setup firing now; ★ marks a proven edge in today's conditions, with its expected result per trade.</div>
     <div class="tablewrap" id="scanner"></div></section>
   <section class="split" data-page="learning" data-claude="1">
     <div class="card" id="lessons-card">
@@ -489,9 +489,11 @@ function renderScorecard(sc) {
       </tbody></table>`;
   const mv = sc.movement || {};
   const moveText = mv.n >= 3 ? ` Trade movement (${mv.n} trades): winners went ${mv.win_mae == null ? "-" : mv.win_mae.toFixed(2) + "R"} against first and kept ${mv.win_kept == null ? "-" : mv.win_kept.toFixed(2) + "R"} of a best ${mv.win_mfe == null ? "-" : mv.win_mfe.toFixed(2) + "R"}; ${mv.losers_were_up_1r} of ${mv.losers} losers were up +1R first.` : "";
+  const sk = sc.skipped || {};
+  const skipText = sk.n || sc.skipped_open ? ` Proven setups not traded: ${sk.n} marked, averaging ${sk.avg_r == null ? "-" : (sk.avg_r > 0 ? "+" : "") + sk.avg_r.toFixed(2) + "R"}, ${sc.skipped_open} open.` : "";
   $("score-calib").textContent = ((sc.calibration || []).length
     ? "How sure it said it was vs how often the target was hit: " + sc.calibration.map((b) => `said ${Math.round(b.said)}%, hit ${Math.round(b.hit)}% (${b.n})`).join("; ") + `. ${sc.open_calls} calls open.`
-    : (sc.calls.n ? `${sc.open_calls} calls open.` : "")) + moveText;
+    : (sc.calls.n ? `${sc.open_calls} calls open.` : "")) + moveText + skipText;
   $("score-calls").innerHTML = (sc.recent_calls || []).length
     ? `<table class="compact"><tbody>${sc.recent_calls.map((c) => `<tr><td>${when(c.closed)}</td><td><strong>${esc(c.coin)}</strong> ${c.dir > 0 ? "long" : "short"}</td>
         <td>${esc(c.exit === "time" ? "time up" : c.exit)}</td><td class="${c.r > 0 ? "good" : c.r < 0 ? "bad" : ""}">${r(c.r)}</td></tr>`).join("")}</tbody></table>`

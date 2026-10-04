@@ -129,6 +129,10 @@ Real trades come slowly, so a month of trading only teaches a handful of lessons
 - **Weekly report.** Built by code every Monday (UTC): return against both rivals, worst drop, trades and results by setup, shadow calls, thinking spend, Claude's review and lessons.
 - **Cheaper entries.** On Hyperliquid, entries start as a post-only limit order at the best bid or ask (0.015% fee) for up to 20 seconds, then the rest goes at market (0.045%). Exits and stops stay market orders so they always fill.
 
+**Proven edges and auto-trading (version 1.15).** Claude was holding back because its instructions mixed up thinking costs (paid per check, whatever it decides) with trading costs (just fees and the risk to the stop), and its playbook said most wake-ups should end in hold. That's fixed. A setup now counts as proven when it has 300+ trades of history with a positive average, the conditions it fires in now averaged at least +0.08R (each with 100+ trades) and none of those conditions lost money. Proven setups are opened by code at standard size (1% risk, the tested 1.5 ATR stop and 3 ATR target) without waking Claude, and Claude manages them on its next check. Any proven setup that doesn't end up traded is followed like a shadow call, so the scorecard shows whether vetoes help.
+
+Honest test of the filter: built from pre 2025 history only and run on 2025 to 2026, proven setups averaged +0.05R a trade after fees (933 trades, about 1.5 a day across the liquid coins), while everything else averaged -0.04R (5,906 trades). Small but real: at 1% risk that's roughly +1.5% to +2% a month before thinking and hosting costs, with plenty of variance. Over the full 7 years the filtered trades show +0.19R, but that figure is flattered because the filter was built on the same data.
+
 **The plan from here:** freeze the rules for 4 to 6 weeks (or 50 to 100 closed trades), fix only bugs, then judge with the scorecard, weekly reports and checklist, and change one thing at a time.
 
 ## Stages

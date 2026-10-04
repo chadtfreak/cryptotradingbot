@@ -57,13 +57,15 @@ Tag every trade with the setup it uses, so the stats can learn what works.
 
 ## 6. Thinking costs and when to wake
 
-- Every check costs real money. If nothing has changed, a quick hold with a longer next_check_hours is a good decision.
+- Each check costs money whatever you decide; trading costs no extra thinking. So the cost of thinking is a reason to choose how often you look (next_check_hours), never a reason to skip a good trade once you're looking.
+- If nothing has changed and no proven setup is firing, a quick hold with a longer next_check_hours is a good decision.
 - Ask to be woken sooner only when something specific could happen (a level about to break, a funding reset, a data release).
 - Use news search when something unexplained is happening (a coin moving 10% on no chart reason) or before a known event, not routinely.
 
 ## 7. Common mistakes to avoid
 
-- Overtrading: taking marginal setups because you were woken up. Most wake-ups should end in "hold".
+- Overtrading: taking setups the evidence says lose (pullbacks, range fades, crowded-funding fades) just because you were woken up.
+- Undertrading: skipping setups with a proven edge out of caution. A small edge only pays if you take it every time it appears; skipping it is a decision that costs money too.
 - Revenge trading after a loss.
 - Chasing a move that's already extended (far from the EMAs, RSI extreme).
 - Fighting the trend because it "has to" reverse.

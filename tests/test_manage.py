@@ -135,7 +135,8 @@ def test_scanner_marks_firing_setups_and_claude_sees_the_matching_research():
     assert ("breakout", 1) in sol["setups"]
     ctx = fake.requests[0]["messages"][0]["content"]
     assert "## Playbook setups firing now" in ctx and "SOL (" in ctx and "breakout long is firing now. Over 7 years:" in ctx
-    assert "breakout long" in eng.summary()["brain"]["scanner"][[f["coin"] for f in eng.summary()["brain"]["scanner"]].index("SOL")]["setups"]
+    sol_row = next(f for f in eng.summary()["brain"]["scanner"] if f["coin"] == "SOL")
+    assert sol_row["setups"][0].startswith("breakout long ★ +")
 
 
 # Outside the charts

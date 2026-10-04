@@ -21,7 +21,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import golive, learning, macro, report, research, scanner
+from . import edge, golive, learning, macro, report, research, scanner
 from .career import Career, month_key
 from .config import Settings
 from .indicators import atr, ema, rsi
@@ -47,6 +47,8 @@ SYSTEM_PROMPT = """You are the trading mind of Survival Bot, an autonomous crypt
 
 Your situation is unusual. You pay for your own existence. Hosting and every time you are woken up to think are paid out of your own balance. If your equity falls below the survival floor you die: everything is sold and you never trade again. Doing well earns you a bigger thinking budget, the smartest model, and promotions to a bigger bankroll. Doing badly costs you those, and two losing months in a row put you on probation.
 
+Be clear about what costs what. Thinking costs money per check, and this check is already paid for: deciding to hold does not get any of it back, and placing a trade costs no extra thinking. A trade only costs its exchange fees (about 0.1% round trip) and whatever it loses if the stop is hit, which the risk limits keep small. Sitting in cash is not free either: it means missing the edge you exist to capture, and doing nothing loses to the maths bot. Fear of spending is never a reason to skip a good trade.
+
 {style}
 
 Hard limits enforced in code (you cannot override them, so plan within them):
@@ -70,6 +72,8 @@ Open interest is the total size of open positions in a coin. Price up with open 
 
 Perps charge or pay funding every hour: when the rate is positive, longs pay shorts, and when it is negative, shorts pay longs. It comes out of your balance like any other cost.
 
+Proven edges: setups marked PROVEN EDGE in your context have made money for years in conditions like the ones now. {auto_text}The default is to have them on at standard size (about {std_risk:g}% risk, with the tested 1.5 ATR stop and 3 ATR target). Skipping or closing one early needs a specific reason, stated in your reasoning. Every proven setup that doesn't end up traded is followed as a skipped edge on your scorecard, so you can see whether your vetoes help or cost money.
+
 Shadow calls: every time you wake, also make up to 5 quick calls on the coins you find most interesting, whether or not you trade them: direction, stop, target, how many hours it has to work (4 to 72) and your honest chance the target is hit first. Code marks every call against live prices for free, and your scorecard below shows how they went, by setup and by how sure you said you were. This is your fastest way to learn which of your instincts actually work, so make real calls, not safe ones. Calls on coins you trade are fine too.
 
 Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). There is no limit on how often you trade or look: that is your call. Each check costs money from your thinking budget, so look often when something is developing and rarely when it isn't. Your state shows how fast you're using the budget. You are also woken automatically on breakouts, big moves, trend signals and when price nears a stop.
@@ -90,7 +94,7 @@ AGGRESSIVE_STYLE = """Your owner wants you to be aggressive and to trade whateve
 - Size up when you have conviction and the setup has a proven record. Add to winners while the move is working. Take partial profits into strength and let the rest run.
 - Short-term trades off the 1h chart are welcome when the setup is clean. More good trades mean faster feedback on what works.
 - Cut losers fast and re-enter when the setup returns. Being wrong small is fine, being frozen is not.
-- Still respect the maths: costs are about 0.1% per round trip plus your thinking, so a trade needs room to move.
+- Still respect the maths: exchange costs are about 0.1% per round trip, so a trade needs room to move. Your thinking is paid per check whatever you decide.
 - Dying ends everything. Aggressive does not mean reckless near the floor: as your health drops, size down."""
 
 REVIEW_PROMPT = """You are the trading mind of Survival Bot doing your weekly self review. You pay for every thought out of your own small balance, you die if equity falls below the survival floor, and your thinking budget and promotions depend on beating the maths bot and simply holding ETH. The point of this review is to make your future decisions better and cheaper.
@@ -417,6 +421,9 @@ class ClaudeBrain:
         for r in learning.grade_calls(eng.store, eng.prices, now):
             eng.store.log(f"Shadow call marked: {r['coin']} {'long' if r['dir'] > 0 else 'short'} ({r['setup']}) from {px(r['entry'])} "
                           f"hit its {r['exit'] if r['exit'] != 'time' else 'time limit'} at {px(r['exit_price'])}, {r['r']:+.2f}R.", ts=now)
+        auto = self._edges(eng, now)
+        if auto:
+            return auto
         key = self.api_key(eng)
         if not key:
             if not eng.store.get("claude_waiting_logged"):
@@ -492,7 +499,9 @@ class ClaudeBrain:
             max_positions=g.max_positions,
             style=AGGRESSIVE_STYLE if g.style == "full send" else PATIENT_STYLE,
             rules=rules_text(g, eng.floor), min_check=f"{self.c.min_check_hours:g}",
-            target_r=g.target_r, time_stop=g.time_stop_hours / 24,
+            target_r=g.target_r, time_stop=g.time_stop_hours / 24, std_risk=self.c.standard_risk * 100,
+            auto_text=("Code opens them automatically at standard size the moment they fire, so your job is to manage them: keep them, "
+                       "adjust the stop or target, or close them with a reason. " if self.c.auto_trade_proven else ""),
             playbook=knowledge("playbook.md"),
             stats=f"\n# Backtested setup statistics\n{stats}\n" if stats else "",
             practice=f"\n# Lessons from your practice run on historical charts\n{practice}\n" if practice else "")
@@ -588,7 +597,8 @@ class ClaudeBrain:
         if funding:
             lines.append(f"- Funding {'paid' if funding >= 0 else 'received'} so far: {abs(funding):.3f} USDC.")
         if tier.get("learning"):
-            lines.append("- Learning phase: your owner is paying for your thinking for now, so use it to learn fast: make every shadow call count.")
+            lines.append("- Learning phase: your owner is paying for your thinking right now. None of it comes out of your balance, so cost is no reason "
+                         "to hold back: take the trades the evidence supports and make every shadow call count.")
         lines.append(f"- Thinking budget: spent ${tier['spent']:.2f} of ${tier['budget']:.2f} {'in the learning phase' if tier.get('learning') else 'this month'}. Mode: {tier['name']}. "
                      f"Average running cost ${burn:.3f}/day, about {runway:.0f} days to the floor if you make nothing.")
         lines.append(self._pace_text(eng, now, tier))
@@ -606,6 +616,12 @@ class ClaudeBrain:
         limit = eng.g.max_trades_per_day
         lines.append(f"- Trades today: {eng.trades_today(now)}" + (f" of {limit} allowed.\n" if limit else " (no limit).\n"))
 
+        unseen = st.get("auto_unseen") or []
+        if unseen:
+            lines.append("## Opened by code since your last check (proven setups at standard size)")
+            lines += [f"- {fmt_time(u['ts'])}: {u['what']}" for u in unseen]
+            lines.append("They're yours to manage now: keep, adjust or close them, with a reason.\n")
+            st.set("auto_unseen", [])
         lines.append("## Your career")
         lines.append(self.career.context(st, self.rival, now, eng.bankroll_base))
         lines.append(golive.context(golive.check(eng, self.rival, now)) + "\n")
@@ -692,6 +708,38 @@ class ClaudeBrain:
                 self._regime_cells = {}
         return self._regime_cells
 
+    def _edges(self, eng, now: int) -> list:
+        """Follows proven setups: marks skipped ones, and opens new ones at standard size if auto-trading is on."""
+        st = eng.store
+        for r in learning.grade_book(st, eng.prices, now, "skipped_edges", "skipped_results"):
+            st.log(f"Skipped edge marked: {r['coin']} {r['setup']} {'long' if r['dir'] > 0 else 'short'} would have made {r['r']:+.2f}R.", ts=now)
+        edge.settle_watch(st, eng.positions, now)
+        proven = edge.firing(self.scan(eng, now), self._regimes())
+        handled = st.get("edge_handled") or []
+        new = [p for p in proven if p["key"] not in handled]
+        if not new:
+            return []
+        st.set("edge_handled", (handled + [p["key"] for p in new])[-200:])
+        edge.watch(st, new, eng.prices, now)
+        if not self.c.auto_trade_proven or not eng.prices:
+            return []
+        decisions, opened = [], []
+        equity = eng.equity()
+        for p in new:
+            price = eng.prices.get(p["coin"])
+            if price is None or p["coin"] in eng.positions or p["coin"] in {d.coin for d in decisions}:
+                continue
+            stop, target = edge.levels(price, p["dir"], p["atr_pct"])
+            side = "long" if p["dir"] > 0 else "short"
+            why = (f"Auto: proven {p['setup']} {side} on {p['coin']}, about {p['est']:+.2f}R a trade in conditions like these over 7 years. "
+                   "Standard size with the tested stop and target.")
+            decisions.append(Decision("buy" if p["dir"] > 0 else "short", why, stop, coin=p["coin"], setup=p["setup"], target=target,
+                                      size_usd=equity * self.c.standard_risk / (abs(price - stop) / price)))
+            opened.append(f"{p['coin']} {p['setup']} {side} (about {p['est']:+.2f}R expected)")
+        if opened:
+            st.set("auto_unseen", (st.get("auto_unseen") or []) + [{"ts": now, "what": w} for w in opened])
+        return decisions
+
     def _research_block(self, eng, feats: list[dict], top: int = 12) -> str:
         """Which playbook setups are firing on the coins Claude sees, and how those setups did in
         these market conditions over years of history."""
@@ -711,11 +759,15 @@ class ClaudeBrain:
             for setup, d in f["setups"]:
                 side = "long" if d > 0 else "short"
                 base = cells.get(f"{setup}|{d}")
+                est = edge.estimate(cells, setup, d, reg)
                 parts = [f"{key_label}: {fmt(cells.get(f'{setup}|{d}|{key}|{reg[key]}'))}"
                          for key, key_label in (("btc", reg["btc"]), ("trend", reg["trend"]), ("funding", f"funding {reg['funding']}"), ("vol", reg["vol"]))
                          if reg[key]]
+                proven = (f" PROVEN EDGE, about {est:+.2f}R a trade expected: "
+                          + ("held." if f["coin"] in held else "auto-opened at standard size unless blocked." if self.c.auto_trade_proven
+                             else "default is to take it at standard size.")) if est is not None else ""
                 lines.append(f"- {f['coin']} ({tags}): {setup} {side} is firing now. Over 7 years: {fmt(base)} overall; in conditions like these, "
-                             + "; ".join(parts) + ".")
+                             + "; ".join(parts) + "." + proven)
         if not lines:
             return "## Playbook setups firing now\nNone of the backtested setups is firing on the top coins right now.\n"
         return ("## Playbook setups firing now, with how they did in conditions like these (2020 to 2026, 30 coins)\n"
@@ -738,7 +790,8 @@ class ClaudeBrain:
         text = (f"- Pace: {len(checks)} checks in the last 24 hours" + (f" at about ${avg:.3f} each" if avg else "")
                 + f", ${day:.2f} in total. ${left:.2f} left for the next {days_left:.1f} days, about ${left / days_left:.2f} a day.")
         if day > 0 and left / day < days_left:
-            text += f" At today's pace it runs out in {left / day:.1f} days, after which you drop to the cheaper model or sleep."
+            text += (f" At today's pace it runs out in {left / day:.1f} days, after which you drop to the cheaper model or sleep. "
+                     "That's a reason to look less often, not to trade less.")
         return text
 
     def _market_block(self, eng, candles) -> str:
@@ -888,6 +941,7 @@ class ClaudeBrain:
         tier = self.tier(eng, now) if eng.prices else None
         last = eng.store.decisions(1, kind="decision")
         scan = self._scan[1][:8]
+        proven = {(p["coin"], p["setup"], p["dir"]): p["est"] for p in edge.firing(self._scan[1], self._regimes())}
         return {"brain": {
             "key_set": bool(self.api_key(eng)),
             "venue": (eng.store.get("venue") or {"name": "paper"})["name"],
@@ -915,5 +969,8 @@ class ClaudeBrain:
             "golive": golive.check(eng, self.rival, now),
             "reports": eng.store.get("weekly_reports") or [],
             "scanner": [{**{k: f[k] for k in ("coin", "price", "ch_24h", "trend", "breakout", "breakdown", "funding_apr", "volume_m")},
-                         "setups": [f"{k.replace('_', ' ')} {'long' if d > 0 else 'short'}" for k, d in f.get("setups", [])]} for f in scan],
+                         "setups": [f"{k.replace('_', ' ')} {'long' if d > 0 else 'short'}"
+                                    + (f" ★ {proven[(f['coin'], k, d)]:+.2f}R" if (f["coin"], k, d) in proven else "")
+                                    for k, d in f.get("setups", [])]} for f in scan],
+            "auto_trade": self.c.auto_trade_proven,
         }}

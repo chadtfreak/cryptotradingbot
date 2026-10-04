@@ -87,6 +87,8 @@ class ClaudeSettings:
     learning_phase_budget_usd: float = 0.0  # owner-funded thinking for a learning phase (0 = none)
     learning_phase_days: int = 30
     macro_feeds: bool = False  # US economic calendar and BTC dominance from free public feeds
+    auto_trade_proven: bool = False  # code opens proven setups by itself at standard size, without waking Claude
+    standard_risk: float = 0.01  # share of equity a standard-size proven trade risks at its stop
     maker_entries: bool = False  # on a live venue, enter with a post-only limit order first (cheaper fees)
     maker_wait_seconds: float = 20.0  # how long to wait for it before paying the market price for the rest
 

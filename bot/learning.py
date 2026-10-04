@@ -83,7 +83,12 @@ def add_calls(store, calls: list[dict], prices: dict, now: int) -> list[str]:
 
 def grade_calls(store, prices: dict, now: int) -> list[dict]:
     """Marks open calls against the latest prices. Returns the ones that just resolved."""
-    book = store.get("shadow_calls") or []
+    return grade_book(store, prices, now, "shadow_calls", "shadow_results")
+
+
+def grade_book(store, prices: dict, now: int, open_key: str, done_key: str) -> list[dict]:
+    """Marks a book of open calls (entry, stop, target, expiry) against the latest prices."""
+    book = store.get(open_key) or []
     if not book:
         return []
     still, done = [], []
@@ -104,8 +109,8 @@ def grade_calls(store, prices: dict, now: int) -> list[dict]:
             continue
         done.append({**c, "r": r, "exit": how, "closed": now, "exit_price": p})
     if done:
-        store.set("shadow_calls", still)
-        store.set("shadow_results", ((store.get("shadow_results") or []) + done)[-KEEP_RESULTS:])
+        store.set(open_key, still)
+        store.set(done_key, ((store.get(done_key) or []) + done)[-KEEP_RESULTS:])
     return done
 
 
@@ -174,7 +179,9 @@ def stats(store) -> dict:
         if b:
             calib.append({"range": f"{lo} to {min(hi, 100)}%", "n": len(b), "said": sum(c["prob"] for c in b) / len(b),
                           "hit": sum(1 for c in b if c["exit"] == "target") / len(b) * 100})
-    return {"movement": movement, "calls": summary(calls), "calls_by_setup": {k: summary(v) for k, v in _group(calls, "setup").items()},
+    skipped = store.get("skipped_results") or []
+    return {"skipped": summary(skipped), "skipped_open": len(store.get("skipped_edges") or []),
+            "movement": movement, "calls": summary(calls), "calls_by_setup": {k: summary(v) for k, v in _group(calls, "setup").items()},
             "calibration": calib, "trades": summary(trades),
             "trades_by_setup": {k: summary(v) for k, v in _group(trades, "setup").items()},
             "open_calls": len(store.get("shadow_calls") or []),
@@ -193,6 +200,13 @@ def scorecard(store) -> str:
             lines.append(f"- {k}: {v['n']} trades, {w(v['win'])} winners, {f(v['avg_r'])} average")
     else:
         lines.append("Real trades: none closed yet.")
+    sk = s["skipped"]
+    if sk["n"] or s["skipped_open"]:
+        line = f"Proven setups that weren't traded: {sk['n']} marked, averaging {f(sk['avg_r'])} ({sk['total_r']:+.1f}R in total), {s['skipped_open']} still open."
+        if sk["n"] >= 5 and sk["avg_r"] is not None:
+            line += (" Skipping them has cost you money: take them." if sk["avg_r"] > 0.05
+                     else " Your vetoes have been saving money." if sk["avg_r"] < -0.05 else "")
+        lines.append(line)
     m = s["movement"]
     if m["n"] >= 3:
         parts = [f"How your {m['n']} measured trades moved before closing:"]

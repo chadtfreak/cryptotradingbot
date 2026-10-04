@@ -25,11 +25,11 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  A tidier dashboard. Claude's view is split into four pages: Today (money,
-  positions, latest thinking, chart and activity), Learning (scorecard,
-  scanner, lessons, practice run), Progress (go-live checklist, weekly report,
-  career, trades) and Settings (thinking budget, API key, venue, bankroll).
-  It's about a third as long on a phone.
+  Claude stops sitting out. It's told plainly that trading costs no extra
+  thinking. Setups with a proven edge in today's conditions (marked with a star
+  in the scanner) are opened automatically at a standard 1% risk with their
+  tested stop and target, and Claude manages them. Any proven setup that isn't
+  traded is tracked on the scorecard, so you can see whether skipping helps.
 dependencies: []
 path: ""
 defaultUsername: ""
