@@ -2,6 +2,7 @@
 
     python -m bot run        Start the bot and dashboard
     python -m bot backtest   Replay the strategy over recent Kraken history
+    python -m bot research   Backtest the playbook setups on years of history (updates Claude's stats)
     python -m bot reset      Wipe the database and start a fresh life
 """
 
@@ -22,7 +23,8 @@ def main() -> None:
     bt = sub.add_parser("backtest", help="replay the strategy over recent history")
     bt.add_argument("--interval", type=int, help="candle size in minutes (default: from config)")
     sub.add_parser("reset", help="delete all bot data and start again")
-    sub.add_parser("research", help="backtest the playbook setups on Hyperliquid history and update Claude's stats")
+    res = sub.add_parser("research", help="backtest the playbook setups on years of history and update Claude's stats")
+    res.add_argument("--cache", default="data/history_cache", help="where downloaded history is kept")
     args = parser.parse_args()
 
     settings = load_settings(args.config)
@@ -62,9 +64,9 @@ def main() -> None:
         print(run_backtest(candles, settings).report())
 
     elif args.cmd == "research":
-        from .research import main as research_main
+        from .history import main as research_main
 
-        research_main()
+        research_main(Path(args.cache))
 
     elif args.cmd == "reset":
         dbs = [p for p in (Path(settings.bot.db_path), Path(settings.claude.db_path)) if p.exists()]

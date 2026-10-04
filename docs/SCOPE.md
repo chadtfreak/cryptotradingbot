@@ -93,7 +93,7 @@ Two losing months in a row puts it on probation: half the risk per trade and one
 **Pre-learning.** Three layers, all read before every decision:
 
 1. A written playbook (`bot/knowledge/playbook.md`): regimes, BTC leading, funding and liquidations, six setups with entries and stops, sizing, costs and common mistakes.
-2. Backtested stats (`bot/knowledge/setup_stats.md`) from 20 coins, mid 2024 to October 2026, 4h candles, after fees. Breakouts (+0.09R a trade) and momentum (+0.08R) had a small real edge, mostly on the long side, and were stronger in the last 90 days. Pullbacks (-0.06R) and range fades (-0.23R) lost money. Refresh with `python -m bot research`.
+2. Backtested stats (`bot/knowledge/setup_stats.md`) from 30 major coins on Binance's free archive, January 2020 to September 2026 (about 20,000 trades through bull, bear and choppy markets), 4h candles, after fees, split by BTC's trend, the coin's trend, funding and volatility. Breakouts are the one steady edge (+0.10R a trade, still +0.10R in the last 12 months), best in calm markets and with normal funding. Momentum longs make a little (+0.08R), more with BTC rising. Pullbacks (-0.03R), squeeze fades (-0.10R) and range fades (-0.22R) lose money, and the playbook now says so. Refresh with `python -m bot research`.
 3. A practice run, started from the dashboard: Claude trades 60 random moments from history with the coin and dates hidden, gets marked on what really happened, and writes lessons it keeps. Costs about $4 to $8 of Anthropic credit, capped at $15, and is billed to your Anthropic account rather than the bot.
 
 ## Learning faster (version 1.6)
@@ -106,6 +106,8 @@ Real trades come slowly, so a month of trading only teaches a handful of lessons
 4. **Lean calls in the practice run.** On every historical moment, traded or not, it calls which way price moves first, so 60 moments give 60 marked calls instead of a handful of trades.
 
 **Learning phase (October 2026).** For the first 30 days on testnet the owner pays for Claude's thinking, up to $40, instead of it coming out of Claude's $100. It uses the smartest model throughout, and practice runs count towards the $40. When the 30 days or the $40 run out, it goes back to paying its own way under the normal earned allowance. Leverage stays at 1x and the bankroll stays at $100: leverage doesn't speed up learning (results are measured in R), and $100 is the real-money rehearsal.
+
+**What didn't work: a "similar moments" lookup (October 2026).** We tried finding the 50 most similar past moments in 340,000 candles of history and telling Claude what happened next. Tested honestly (only pre 2025 history, predicting 2025 to 2026), it called the direction right 50% of the time, a coin flip, so it isn't used. Short-term crypto direction is close to random; the edge, where there is one, is in picking the right setup for the market and managing risk.
 
 ## Stages
 

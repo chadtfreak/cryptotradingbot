@@ -13,7 +13,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from .claude_brain import knowledge, usage_cost
+from .claude_brain import knowledge
 from .indicators import atr, ema, rsi
 from .research import FEE_ROUND_TRIP, MAX_HOLD
 

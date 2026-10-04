@@ -412,3 +412,34 @@ def test_market_post_retries_server_errors(monkeypatch):
     m.client = httpx.Client(transport=httpx.MockTransport(handler))
     monkeypatch.setattr("bot.market.time.sleep", lambda s: None)
     assert m.mids() == {"ETH": 100.0} and len(calls) == 3
+
+
+# Long history research
+
+def test_squeeze_fade_needs_funding():
+    from bot.indicators import atr as atr_, ema as ema_, rsi as rsi_
+    from bot.research import signals
+    closes = [100.0] * 130 + [100 + i * 0.8 for i in range(1, 15)]
+    c = make_candles(closes, spread=0.3)
+    cl = [x.close for x in c]
+    f, s, r = ema_(cl, 20), ema_(cl, 50), rsi_(cl)
+    a = atr_([x.high for x in c], [x.low for x in c], cl, 14)
+    i = len(c) - 1
+    assert not any(k == "squeeze_fade" for k, *_ in signals(c, i, f, s, a, r))
+    assert ("squeeze_fade", -1, 1.5, 3.0) in signals(c, i, f, s, a, r, funding=80.0)
+
+
+def test_run_long_splits_by_market_mood():
+    from bot.research import run_long
+    data = {coin: {"candles": make_candles(wave(1500, start, amp=0.08, period=60 + k * 7)),
+                   "funding": [(1_700_000_000 + j * 8 * 3600, (j % 9 - 3) * 12.0) for j in range(2000)]}
+            for k, (coin, start) in enumerate([("BTC", 1000.0), ("ETH", 100.0), ("SOL", 20.0)])}
+    text = run_long(data)
+    assert "3 major coins" in text and "When BTC's 4h trend is up or down" in text
+    assert "By funding" in text and "trust the numbers" in text
+
+
+def test_funding_lookup_uses_latest_published_rate():
+    from bot.history import _funding_lookup
+    at = _funding_lookup([(100, 10.0), (200, -5.0)])
+    assert at(50) is None and at(150) == 10.0 and at(200) == -5.0

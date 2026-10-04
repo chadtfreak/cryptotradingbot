@@ -12,7 +12,7 @@ This is your manual. It's a starting point, not scripture: where your own lesson
 ## 2. Reading the market
 
 **Regime first.** Before any setup, decide which world you're in:
-- Trending: 4h 20 EMA clearly above or below the 50 EMA, price making higher highs (or lower lows), daily chart agreeing. Trade with the trend: breakouts and pullbacks.
+- Trending: 4h 20 EMA clearly above or below the 50 EMA, price making higher highs (or lower lows), daily chart agreeing. Trade with the trend: breakouts and momentum.
 - Ranging: EMAs flat and tangled, price bouncing between levels. Fade the edges or stand aside. Breakouts fail more often here.
 - Volatile chop: big candles both ways, no follow-through. The best trade is usually no trade.
 
@@ -33,17 +33,17 @@ This is your manual. It's a starting point, not scripture: where your own lesson
 
 Tag every trade with the setup it uses, so the stats can learn what works.
 
-**Breakout (trend continuation).** Price closes a 4h candle above the 20-day high (or below the 20-day low for a short), ideally with the trend already pointing that way and volume above normal. Enter on the close or a small pullback. Stop below the breakout level or about 1.5 ATR away. Target 2 to 3 ATR, then trail. Fails often in ranges: check the regime.
+**Breakout (trend continuation).** Price closes a 4h candle above the 20-day high (or below the 20-day low for a short), ideally with the trend already pointing that way and volume above normal. Enter on the close or a small pullback. Stop below the breakout level or about 1.5 ATR away. Target 2 to 3 ATR, then trail. Evidence (30 coins, 2020 to 2026): the one setup with a steady edge, about +0.10R a trade over 3,500 trades and still +0.10R in the last 12 months. It did best when the coin was calm (low volatility longs +0.16R) and funding was normal. Breakout longs lost money when longs were already crowded (funding over 30% a year), and breakout longs against a falling BTC barely broke even.
 
-**Pullback in a trend.** In a clear uptrend, price pulls back to the 4h 20 EMA or a prior breakout level and holds (a higher low forms). Enter on the bounce, stop just below the pullback low, target the prior high or beyond. The mirror image works for shorts in downtrends. Usually the best reward to risk.
+**Pullback in a trend.** In a clear uptrend, price pulls back to the 4h 20 EMA or a prior breakout level and holds (a higher low forms). Enter on the bounce, stop just below the pullback low, target the prior high or beyond. Evidence: as a mechanical rule it lost money over 9,000 trades (longs -0.08R, much worse when BTC is falling). The textbook favourite doesn't work here on its own. Only take one with a specific extra reason, and small.
 
-**Range fade.** In a clearly ranging market, short near the top of the range and buy near the bottom, with the stop just outside the range and the target at the middle or other side. Only when the regime really is a range.
+**Range fade.** In a clearly ranging market, short near the top of the range and buy near the bottom, with the stop just outside the range and the target at the middle or other side. Evidence: lost badly in every kind of market (-0.22R a trade). Avoid it.
 
-**Squeeze fade (funding).** When funding is extreme and price stops making progress in the crowded direction, position against the crowd with a tight stop beyond the recent extreme. High risk, high reward, small size.
+**Squeeze fade (funding).** When funding is extreme and price stops making progress in the crowded direction, position against the crowd with a tight stop beyond the recent extreme. Evidence: fading crowded funding lost money (-0.10R a trade). The crowd is usually right for longer than you think. Use extreme funding as a filter instead: don't buy breakouts when longs are crowded.
 
-**Failed breakout.** Price breaks a key level, then closes back inside within a candle or two. Trapped traders add fuel the other way. Enter on the close back inside, stop beyond the failed break's extreme.
+**Failed breakout.** Price breaks a key level, then closes back inside within a candle or two. Trapped traders add fuel the other way. Enter on the close back inside, stop beyond the failed break's extreme. Evidence: break-even overall, but failed breakdowns bought as longs did well when BTC was falling (+0.11R), when volatility was high (+0.20R) and when shorts were crowded (+0.17R). Failed breakouts shorted lost money.
 
-**Momentum continuation.** A coin up (or down) strongly on the day and holding near its extreme into a fresh 4h close, with BTC supportive. Smaller size, tighter trailing stop. Late entries in exhausted moves (RSI above about 80 on the 4h) are traps.
+**Momentum continuation.** A coin up (or down) strongly on the day and holding near its extreme into a fresh 4h close, with BTC supportive. Smaller size, tighter trailing stop. Late entries in exhausted moves (RSI above about 80 on the 4h) are traps. Evidence: longs made +0.08R overall, +0.11R with BTC rising and +0.17R in calm markets. Momentum shorts lost money: don't chase coins down.
 
 ## 5. Risk and position sizing
 

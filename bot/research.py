@@ -1,14 +1,13 @@
-"""Backtests every playbook setup on every liquid coin and writes the results as a table
-Claude reads before each decision: real evidence of what has worked in these markets.
+"""Backtests every playbook setup on years of history and writes the results as a table
+Claude reads before each decision: real evidence of what has worked in these markets, and when.
 
-Run with `python -m bot research`. Uses closed 4h candles only (no look-ahead), assumes
-the stop is hit first when a candle touches both stop and target, and charges fees.
+Run with `python -m bot research` (history.py fetches the data). Uses closed 4h candles only
+(no look-ahead), assumes the stop is hit first when a candle touches both stop and target,
+and charges fees.
 
 Each setup's rules are mechanical approximations of the playbook. Claude applies judgement
 on top, so treat these as base rates, not promises."""
 
-import time
-from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,8 +19,9 @@ MAX_HOLD = 30  # 4h candles: 5 days
 RANGE = 120  # 20 days of 4h candles
 
 
-def signals(c, i, f, s, a, r):
-    """Setups firing on candle i: list of (setup, direction, stop_atr, target_atr)."""
+def signals(c, i, f, s, a, r, funding=None):
+    """Setups firing on candle i: list of (setup, direction, stop_atr, target_atr).
+    funding is the yearly funding rate in percent at that candle, when known."""
     out = []
     close, prev = c[i].close, c[i - 1].close
     hi = max(x.high for x in c[i - RANGE:i])
@@ -53,6 +53,11 @@ def signals(c, i, f, s, a, r):
         out.append(("momentum", 1, 1.5, 3.0))
     if ch24 < -8 and down and close <= rng_lo + 0.2 * (rng_hi - rng_lo) and r[i] > 20:
         out.append(("momentum", -1, 1.5, 3.0))
+    if funding is not None:  # crowded positioning: fade it once price is stretched the same way
+        if funding > 40 and r[i] > 65 and close >= hi * 0.97:
+            out.append(("squeeze_fade", -1, 1.5, 3.0))
+        if funding < -15 and r[i] < 35 and close <= lo * 1.03:
+            out.append(("squeeze_fade", 1, 1.5, 3.0))
     return out
 
 
@@ -72,8 +77,9 @@ def simulate(c, i, direction, stop_atr, target_atr, a) -> float:
     return direction * (last - entry) / risk - fee_r
 
 
-def backtest_coin(candles) -> list[tuple[str, int, float, int]]:
-    """(setup, direction, R, entry index) for every trade, one open trade per setup at a time."""
+def backtest_coin(candles, funding=None) -> list[tuple[str, int, float, int]]:
+    """(setup, direction, R, entry index) for every trade, one open trade per setup at a time.
+    funding, if given, is a function from a candle's time to the yearly funding rate."""
     closes = [x.close for x in candles]
     f, s = ema(closes, 20), ema(closes, 50)
     a = atr([x.high for x in candles], [x.low for x in candles], closes, 14)
@@ -83,7 +89,8 @@ def backtest_coin(candles) -> list[tuple[str, int, float, int]]:
     for i in range(RANGE + 2, len(candles) - 1):
         if None in (f[i], s[i], a[i], r[i]) or not a[i]:
             continue
-        for setup, d, sa, ta in signals(candles, i, f, s, a, r):
+        fr = funding(candles[i].ts) if funding else None
+        for setup, d, sa, ta in signals(candles, i, f, s, a, r, fr):
             key = f"{setup}{d}"
             if busy_until.get(key, -1) >= i:
                 continue
@@ -103,67 +110,61 @@ def stats(rs: list[float]) -> dict:
             "avg_loss": sum(x for x in rs if x <= 0) / max(n - len(wins), 1)}
 
 
-def run(market, min_volume: float = 50e6, extra: int = 10, log=print) -> str:
-    coins = market.liquid(min_volume)
-    for r in market.universe():  # widen the sample a little with the next most traded coins
-        if len(coins) >= len(market.liquid(min_volume)) + extra:
-            break
-        if r["coin"] not in coins:
-            coins.append(r["coin"])
-    by_setup: dict[str, list[float]] = defaultdict(list)
-    by_dir: dict[tuple, list[float]] = defaultdict(list)
-    by_coin: dict[tuple, list[float]] = defaultdict(list)
-    recent: dict[str, list[float]] = defaultdict(list)
-    spans = []
-    for coin in coins:
-        try:
-            candles = market.candles(240, coin=coin, count=5000)
-        except Exception as exc:
-            log(f"  {coin}: skipped ({exc})")
-            continue
-        if len(candles) < RANGE + 100:
-            continue
-        spans.append((candles[0].ts, candles[-1].ts))
-        cutoff = len(candles) - 6 * 90  # last 90 days
-        for setup, d, res, i in backtest_coin(candles):
-            by_setup[setup].append(res)
-            by_dir[(setup, d)].append(res)
-            by_coin[(setup, coin)].append(res)
-            if i >= cutoff:
-                recent[setup].append(res)
-        log(f"  {coin}: {len(candles)} candles")
-        time.sleep(0.2)
+def run_long(data: dict) -> str:
+    """The same setups on years of Binance history, split by market mood, so Claude knows not
+    just whether a setup works but when."""
+    from .history import _funding_lookup, indicators
 
-    start = datetime.fromtimestamp(min(s for s, _ in spans), timezone.utc).strftime("%b %Y")
-    end = datetime.fromtimestamp(max(e for _, e in spans), timezone.utc).strftime("%d %b %Y")
-    lines = [f"Backtest of the playbook setups on {len(spans)} Hyperliquid coins, 4h candles, {start} to {end}. "
-             f"R = multiples of the amount risked, after fees. Expectancy is the average R per trade: above about +0.1 is a real edge, "
-             f"below 0 loses money. These are mechanical versions of each setup; your judgement should beat them, but don't ignore them.",
-             "", "setup | trades | win rate | avg win | avg loss | expectancy | last 90 days expectancy (trades)"]
-    order = sorted(by_setup, key=lambda k: -stats(by_setup[k])["exp"])
-    for k in order:
-        t, rc = stats(by_setup[k]), stats(recent.get(k, []))
-        rec = f"{rc['exp']:+.2f}R ({rc['n']})" if rc["n"] else "none"
-        lines.append(f"{k} | {t['n']} | {t['win']:.0f}% | {t['avg_win']:+.2f}R | {t['avg_loss']:+.2f}R | {t['exp']:+.2f}R | {rec}")
-    lines += ["", "By direction: setup | long expectancy (trades) | short expectancy (trades)"]
-    for k in order:
-        lo, sh = stats(by_dir[(k, 1)]), stats(by_dir[(k, -1)])
-        fmt = lambda x: f"{x['exp']:+.2f}R ({x['n']})" if x["n"] else "none"
-        lines.append(f"{k} | {fmt(lo)} | {fmt(sh)}")
-    lines += ["", "Best and worst coins per setup (at least 8 trades): setup | best | worst"]
-    for k in order:
-        rows = [(coin, stats(v)) for (sk, coin), v in by_coin.items() if sk == k and len(v) >= 8]
-        rows.sort(key=lambda x: -x[1]["exp"])
-        best = ", ".join(f"{c} {s['exp']:+.2f}R" for c, s in rows[:3]) or "n/a"
-        worst = ", ".join(f"{c} {s['exp']:+.2f}R" for c, s in rows[-3:][::-1]) or "n/a"
-        lines.append(f"{k} | {best} | {worst}")
-    lines += ["", "Not backtested: squeeze_fade (needs funding history). Treat it as unproven and size it small."]
+    btc = indicators(data["BTC"]["candles"])
+    btc_pos = {t: k for k, t in enumerate(btc["ts"])}
+    rows = []  # (setup, direction, R, regimes, ts)
+    for coin, d in data.items():
+        candles = d["candles"]
+        fund = _funding_lookup(d["funding"]) if d["funding"] else None
+        ind = indicators(candles)
+        atr_pcts = sorted(a / c * 100 for a, c in zip(ind["atr"], ind["close"]) if a)
+        median_vol = atr_pcts[len(atr_pcts) // 2] if atr_pcts else 0
+        for setup, direction, res, i in backtest_coin(candles, fund):
+            a, c = ind["atr"][i], ind["close"][i]
+            j = btc_pos.get(candles[i].ts)
+            fr = fund(candles[i].ts) if fund else None
+            trend_atr = abs(ind["ema20"][i] / ind["ema50"][i] - 1) * 100 / (a / c * 100)
+            reg = {
+                "btc": ("BTC up" if btc["ema20"][j] > btc["ema50"][j] else "BTC down") if j is not None and btc["ema50"][j] else None,
+                "trend": "trending" if trend_atr >= 1 else "choppy",
+                "funding": None if fr is None else ("longs crowded" if fr > 30 else "shorts crowded" if fr < 0 else "normal"),
+                "vol": "high vol" if a / c * 100 > median_vol else "low vol",
+            }
+            rows.append((setup, direction, res, reg, candles[i].ts))
+
+    first = datetime.fromtimestamp(min(r[4] for r in rows), timezone.utc).strftime("%b %Y")
+    last = datetime.fromtimestamp(max(r[4] for r in rows), timezone.utc).strftime("%b %Y")
+    year_ago = max(r[4] for r in rows) - 365 * 86400
+    fmt = lambda x: f"{x['exp']:+.2f}R ({x['n']})" if x["n"] >= 15 else (f"{x['exp']:+.2f}R ({x['n']}, too few)" if x["n"] else "none")
+    by = lambda pred: [r[2] for r in rows if pred(r)]
+    setups = sorted({r[0] for r in rows}, key=lambda k: -stats(by(lambda r: r[0] == k))["exp"])
+    lines = [f"Backtest of the playbook setups on {len(data)} major coins, Binance 4h candles, {first} to {last}, through bull, bear and choppy markets. "
+             "R = multiples of the amount risked, after fees, 1.5 ATR stop and 2 to 3 ATR target. Expectancy is the average R per trade: "
+             "above about +0.1 is a real edge, below 0 loses money. Numbers in brackets are trade counts. These are mechanical versions "
+             "of each setup and base rates, not promises; where a setup only works in one kind of market, trade it only there. "
+             "Splits with fewer than about 300 trades are noisy, so don't lean hard on a single small cell. "
+             "Where these numbers disagree with the playbook, trust the numbers.",
+             "", "setup | trades | win rate | expectancy | long | short | last 12 months"]
+    for k in setups:
+        t = stats(by(lambda r: r[0] == k))
+        lines.append(f"{k} | {t['n']} | {t['win']:.0f}% | {t['exp']:+.2f}R | {fmt(stats(by(lambda r: r[0] == k and r[1] > 0)))} | "
+                     f"{fmt(stats(by(lambda r: r[0] == k and r[1] < 0)))} | {fmt(stats(by(lambda r: r[0] == k and r[4] >= year_ago)))}")
+    dims = [("btc", ["BTC up", "BTC down"], "When BTC's 4h trend is up or down"),
+            ("trend", ["trending", "choppy"], "When the coin itself is trending (20 EMA at least 1 ATR from the 50) or choppy"),
+            ("funding", ["longs crowded", "normal", "shorts crowded"], "By funding (longs crowded = over 30% a year, shorts crowded = negative)"),
+            ("vol", ["high vol", "low vol"], "When the coin is more or less volatile than usual")]
+    for key, values, title in dims:
+        lines += ["", f"{title}: setup and side | " + " | ".join(values)]
+        for k in setups:
+            for d, side in ((1, "long"), (-1, "short")):
+                cells = [stats(by(lambda r: r[0] == k and r[1] == d and r[3][key] == v)) for v in values]
+                if sum(c["n"] for c in cells) >= 30:
+                    lines.append(f"{k} {side} | " + " | ".join(fmt(c) for c in cells))
+    lines += ["", "squeeze_fade here means: funding over 40% a year with RSI over 65 near the 20-day high (short), or funding below -15% "
+              "with RSI under 35 near the 20-day low (long). Binance funding is used as the measure of crowding."]
     return "\n".join(lines)
-
-
-def main() -> None:
-    from .market import HyperliquidMarket
-    print("Backtesting setups on Hyperliquid history...")
-    text = run(HyperliquidMarket())
-    OUT.write_text(text + "\n")
-    print("\n" + text + f"\n\nSaved to {OUT}")

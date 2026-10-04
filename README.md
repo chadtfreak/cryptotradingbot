@@ -52,7 +52,7 @@ To stop it, go back to the terminal and press **Ctrl+C**. To start it again late
 | `python -m bot run` | Start the bot and the dashboard |
 | `python -m bot backtest` | Replay the strategy over the last ~120 days of Kraken data |
 | `python -m bot backtest --interval 60` | Same, on 1 hour candles |
-| `python -m bot research` | Backtest the playbook setups on Hyperliquid history and refresh Claude's stats |
+| `python -m bot research` | Download years of history from Binance's free archive, backtest the playbook setups by market mood and refresh Claude's stats |
 | `python -m bot reset` | Delete all history and start a new life |
 | `pip install -r requirements-dev.txt && pytest` | Run the tests |
 
@@ -93,6 +93,7 @@ bot/
   scanner.py     ranks every liquid coin and flags breakouts and big moves
   career.py      allowance, promotions and probation
   research.py    backtests the playbook setups
+  history.py     downloads years of history for the research
   practice.py    the historical practice run
   learning.py    shadow calls, the scorecard and quick trade reviews
   knowledge/     the playbook and backtested stats Claude reads

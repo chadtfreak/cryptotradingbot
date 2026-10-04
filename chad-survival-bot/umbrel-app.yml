@@ -25,11 +25,10 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  A 30 day learning phase: you pay for Claude's thinking (up to $40) instead of
-  it coming out of its balance, so it can use its best model the whole time and
-  learn faster. It starts when you update and ends after 30 days or $40,
-  whichever comes first. Practice runs count towards it. Version 1.6 added
-  shadow calls, the scorecard and quick trade reviews.
+  Claude's trading research now covers nearly 7 years and 30 coins (about
+  20,000 trades) instead of 2 years, split by market mood, so it knows when
+  each type of trade works. Breakouts are the one steady edge; pullbacks,
+  range fades and crowded-funding fades lose money, and its playbook now says so.
 dependencies: []
 path: ""
 defaultUsername: ""
