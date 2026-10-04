@@ -25,10 +25,10 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Claude now decides how often to look and trade: it can check back in as
-  little as 15 minutes, and market events can wake it every 15 minutes. It sees
-  how fast it's using its thinking budget so it can judge whether a quick look
-  is worth it. Version 1.8 added nearly 7 years of trading research.
+  Before buying or shorting on Hyperliquid, the bot now checks the coin's order
+  book. On testnet some smaller coins (like PUMP) have big gaps between buyers
+  and sellers, so orders never filled. It now skips those, says why, and tells
+  Claude not to waste checks retrying them.
 dependencies: []
 path: ""
 defaultUsername: ""

@@ -527,6 +527,11 @@ class ClaudeBrain:
             lines.append("## Scanner: most interesting liquid coins right now (4h candles)")
             lines.append(scanner.table(feats, list(eng.positions)) + "\n")
 
+        bad = {c: v for c, v in (st.get("untradeable") or {}).items() if now - v["ts"] < 12 * 3600}
+        if bad:
+            lines.append("## Can't trade on this venue right now (checked in the last 12 hours)")
+            lines += [f"- {c}: {v['why']}." for c, v in bad.items()]
+            lines.append("Don't spend checks retrying these; pick from the others.\n")
         lines.append(f"## {eng.primary} in detail")
         lines.append(self._market_block(eng, candles))
         for coin in eng.positions:

@@ -293,6 +293,17 @@ class Engine:
         except Exception:
             return False
 
+    def _book_problem(self, coin: str) -> str | None:
+        """On a live venue, checks the exchange's order book can take the order before sending it."""
+        venue = getattr(self.broker, "venue", None)
+        if not self.live or not hasattr(venue, "book_problem"):
+            return None
+        try:
+            real = self.market.mids().get(coin) if hasattr(self.market, "mids") else None
+            return venue.book_problem(coin, real)
+        except Exception:
+            return None  # can't check: let the order try
+
     def _apply_open(self, d: Decision, coin: str, now: int) -> None:
         g = self.g
         side = 1 if d.action == "buy" else -1
@@ -306,6 +317,13 @@ class Engine:
             return
         if side < 0 and not g.allow_short:
             self.store.log("Guardrail: this bot isn't allowed to short.", level="warning", ts=now)
+            return
+        problem = self._book_problem(coin)
+        if problem:
+            bad = self.store.get("untradeable") or {}
+            bad[coin] = {"why": problem, "ts": now}
+            self.store.set("untradeable", bad)
+            self.store.log(f"Can't {word} {coin} on this venue right now: {problem}. Skipping it.", level="warning", ts=now)
             return
         pos = self.position(coin)
         if pos and pos["qty"] * side < 0:

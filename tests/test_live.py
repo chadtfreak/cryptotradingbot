@@ -247,3 +247,41 @@ def test_sets_exchange_leverage_to_1x_on_first_trade():
     eng.tick()
     assert venue.leverage == 1
     assert any("leverage for ETH to 1x" in e["message"] for e in eng.store.events())
+
+
+def test_thin_testnet_book_skips_the_order_and_tells_claude():
+    class ThinVenue(FakeVenue):
+        def book_problem(self, coin, real_price=None):
+            return "its order book is too thin (12.0% gap between buyers and sellers)"
+    eng, venue, clock = make_live([tool_reply("submit_decision", decision("buy", pct=40, stop=95.0)),
+                                   tool_reply("submit_decision", decision("hold"))], venue=ThinVenue())
+    eng.tick()
+    assert venue.orders == [] and eng.positions == {}
+    assert "too thin" in eng.store.get("untradeable")["ETH"]["why"]
+    assert any("Can't buy ETH on this venue right now" in e["message"] for e in eng.store.events())
+    clock.t += 3 * 3600
+    eng.store.set("claude_next_check_ts", clock.t - 1)
+    eng.tick()
+    assert "## Can't trade on this venue right now" in eng.brain._client.requests[1]["messages"][0]["content"]
+
+
+def test_book_problem_reads_the_order_book():
+    from bot.hyperliquid import HyperliquidVenue
+
+    class BookInfo:
+        def __init__(self, bid, ask):
+            self.book = {"levels": [[{"px": str(bid), "sz": "1"}], [{"px": str(ask), "sz": "1"}]]}
+
+        def meta(self):
+            return {"universe": [{"name": "PUMP", "szDecimals": 0}, {"name": "ZEC", "szDecimals": 2, "isDelisted": True}]}
+
+        def l2_snapshot(self, coin):
+            return self.book
+    v = HyperliquidVenue("testnet", "0x" + "1" * 40, "0x" + "2" * 64)
+    v._info = BookInfo(0.006403, 0.007187)
+    v._connect = lambda: None
+    assert "too thin" in v.book_problem("PUMP", 0.006285)
+    v._info, v._sz = BookInfo(0.00628, 0.00629), None
+    assert v.book_problem("PUMP", 0.006285) is None
+    assert "away from the real market" in v.book_problem("PUMP", 0.0055)
+    assert "isn't listed" in v.book_problem("ZEC")

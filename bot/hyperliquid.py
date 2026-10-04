@@ -16,6 +16,8 @@ URLS = {
 }
 MARKET_SLIPPAGE = 0.01  # market orders are IOC limits up to 1% through the mid
 STOP_SLIPPAGE = 0.10  # once a stop triggers, accept up to 10% slippage to be sure it fills
+MAX_SPREAD_PCT = 1.5  # don't open into a book with a wider gap than this between buyers and sellers
+MAX_OFF_MARKET_PCT = 2.0  # or one priced this far from the real market (testnet books can drift)
 MIN_ORDER_USD = 10.0  # Hyperliquid's minimum order value
 
 
@@ -111,7 +113,7 @@ class HyperliquidVenue:
 
     def sz_decimals(self, coin: str | None = None) -> int:
         if self._sz is None:
-            self._sz = {u["name"]: int(u["szDecimals"]) for u in self.info.meta()["universe"]}
+            self._sz = {u["name"]: int(u["szDecimals"]) for u in self.info.meta()["universe"] if not u.get("isDelisted")}
         coin = coin or self.coin
         if coin not in self._sz:
             raise VenueError(f"{coin} isn't listed on Hyperliquid {self.network}")
@@ -126,6 +128,25 @@ class HyperliquidVenue:
 
     def state(self) -> AccountState:
         return account_state(self.info, self.account, self.coin)
+
+    def book_problem(self, coin: str, real_price: float | None = None) -> str | None:
+        """Why an order in this coin wouldn't fill sensibly right now, or None if the book looks fine.
+        Testnet books for smaller coins are often thin, with big gaps or prices far from the real market."""
+        try:
+            self.sz_decimals(coin)
+        except VenueError:
+            return f"it isn't listed on Hyperliquid {self.network}"
+        levels = (self.info.l2_snapshot(coin) or {}).get("levels") or [[], []]
+        if not levels[0] or not levels[1]:
+            return "its order book is empty"
+        bid, ask = float(levels[0][0]["px"]), float(levels[1][0]["px"])
+        mid = (bid + ask) / 2
+        spread = (ask - bid) / mid * 100
+        if spread > MAX_SPREAD_PCT:
+            return f"its order book is too thin ({spread:.1f}% gap between buyers and sellers)"
+        if real_price and abs(mid / real_price - 1) * 100 > MAX_OFF_MARKET_PCT:
+            return f"it's priced {(mid / real_price - 1) * 100:+.1f}% away from the real market here"
+        return None
 
     def stop_orders(self, coin: str | None = None) -> list[dict]:
         orders = self.info.frontend_open_orders(self.account)
