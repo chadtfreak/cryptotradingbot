@@ -25,11 +25,9 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  You can now add to Claude's bankroll from the dashboard (under "Where Claude
-  trades"), up to everything spare in the testnet account. Its survival floor
-  moves with it, staying at half the bankroll, and promotions scale too: 1, 2
-  and 4 times its bankroll. Version 1.9.1 skips coins whose testnet order book
-  is too thin to trade, like PUMP.
+  Claude can now hold up to 10 positions at once (was 5), and sees the top 12
+  coins from the scanner (was 8). Total size is still capped at its bankroll,
+  with no leverage. Version 1.10 added bankroll top-ups.
 dependencies: []
 path: ""
 defaultUsername: ""

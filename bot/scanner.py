@@ -79,7 +79,7 @@ def scan(market, min_volume: float, held: list[str]) -> list[dict]:
     return out
 
 
-def table(features: list[dict], held: list[str], limit: int = 8) -> str:
+def table(features: list[dict], held: list[str], limit: int = 12) -> str:
     """Compact table for Claude: the top opportunities plus anything held."""
     pick = features[:limit] + [f for f in features[limit:] if f["coin"] in held]
     lines = ["coin | price | 4h | 24h | 7d | 4h trend | RSI | ATR% | vs 20d high | vs 20d low | funding/yr | vol $M | flags"]

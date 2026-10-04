@@ -1,6 +1,6 @@
 # Survival Bot
 
-Claude trades crypto with its own small account and has to pay its own way. It trades any coin doing over $20M a day on Hyperliquid, long or short, up to 5 at once (all 1x perpetuals), pays for its hosting and every bit of its own thinking from its balance, and dies if it drops below its survival floor. It keeps a journal, reviews itself weekly, earns its thinking budget and promotions by beating its rivals, and comes preloaded with a trading playbook, backtested stats and an optional practice run. A simple maths bot trades alongside it as a rival. A dashboard shows what both are doing and why.
+Claude trades crypto with its own small account and has to pay its own way. It trades any coin doing over $20M a day on Hyperliquid, long or short, up to 10 at once (all 1x perpetuals), pays for its hosting and every bit of its own thinking from its balance, and dies if it drops below its survival floor. It keeps a journal, reviews itself weekly, earns its thinking budget and promotions by beating its rivals, and comes preloaded with a trading playbook, backtested stats and an optional practice run. A simple maths bot trades alongside it as a rival. A dashboard shows what both are doing and why.
 
 Currently in **paper mode**: real live prices, pretend money. See [docs/SCOPE.md](docs/SCOPE.md) for the plan and the honest maths.
 

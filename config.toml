@@ -56,7 +56,7 @@ allow_adding = true              # can add to a position it already holds
 stops_only_up = false            # can move its stop up or down
 allow_short = true               # can bet on ETH falling
 max_leverage = 1.0               # never more exposure than its equity. Hard-coded safety, keep at 1.
-max_positions = 5                # up to 5 coins at once
+max_positions = 10               # up to 10 coins at once
 min_volume_usd = 20000000        # any Hyperliquid coin with $20M+ daily volume
 
 [claude]

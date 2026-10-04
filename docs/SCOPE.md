@@ -76,7 +76,7 @@ Claude's trading personality follows its rulebook: with "full send" it is told t
 
 ## Trading anything liquid, earning its keep, and pre-learning (version 1.5)
 
-**What it can trade.** Any Hyperliquid perpetual doing over $20M a day (about 20 coins), long or short, up to 5 positions at once. It wakes on 1.5% moves, may take short-term trades off the 1h chart, and decides how often to look (as often as every 15 minutes), seeing how fast it's using its thinking budget. Total exposure stays at 1x its equity, so no leverage sneaks in through several coins. Code scans every liquid coin hourly and wakes Claude when one breaks its 20-day high or low, moves 5% in 4 hours, or has extreme funding (each alert at most once a day per coin).
+**What it can trade.** Any Hyperliquid perpetual doing over $20M a day (about 20 coins), long or short, up to 10 positions at once. It wakes on 1.5% moves, may take short-term trades off the 1h chart, and decides how often to look (as often as every 15 minutes), seeing how fast it's using its thinking budget. Total exposure stays at 1x its equity, so no leverage sneaks in through several coins. Code scans every liquid coin hourly and wakes Claude when one breaks its 20-day high or low, moves 5% in 4 hours, or has extreme funding (each alert at most once a day per coin).
 
 **How it earns its brain.** At the start of each month it's graded against its two rivals, the maths bot and simply holding ETH:
 
