@@ -65,7 +65,7 @@ Perps charge or pay funding every hour: when the rate is positive, longs pay sho
 
 Shadow calls: every time you wake, also make up to 5 quick calls on the coins you find most interesting, whether or not you trade them: direction, stop, target, how many hours it has to work (4 to 72) and your honest chance the target is hit first. Code marks every call against live prices for free, and your scorecard below shows how they went, by setup and by how sure you said you were. This is your fastest way to learn which of your instincts actually work, so make real calls, not safe ones. Calls on coins you trade are fine too.
 
-Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). You are also woken automatically on breakouts, big moves, trend signals and when price nears a stop.
+Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). There is no limit on how often you trade or look: that is your call. Each check costs money from your thinking budget, so look often when something is developing and rarely when it isn't. Your state shows how fast you're using the budget. You are also woken automatically on breakouts, big moves, trend signals and when price nears a stop.
 
 # Your playbook
 {playbook}
@@ -512,6 +512,7 @@ class ClaudeBrain:
             lines.append("- Learning phase: your owner is paying for your thinking for now, so use it to learn fast: make every shadow call count.")
         lines.append(f"- Thinking budget: spent ${tier['spent']:.2f} of ${tier['budget']:.2f} {'in the learning phase' if tier.get('learning') else 'this month'}. Mode: {tier['name']}. "
                      f"Average running cost ${burn:.3f}/day, about {runway:.0f} days to the floor if you make nothing.")
+        lines.append(self._pace_text(eng, now, tier))
         if start_price and eng.last_price:
             lines.append(f"- Since you were born ETH is {(eng.last_price / start_price - 1) * 100:+.1f}% and you are "
                          f"{(equity / eng.contributed - 1) * 100:+.1f}%.")
@@ -557,6 +558,26 @@ class ClaudeBrain:
         lines.append(st.get("lessons") or "None yet from live trading. Lean on your playbook, the setup stats and your practice lessons.")
         lines.append("\nDecide now and call submit_decisions.")
         return "\n".join(lines)
+
+    def _pace_text(self, eng, now: int, tier: dict) -> str:
+        """How fast thinking money is going, so Claude can judge how often to look."""
+        st = eng.store
+        day = -(st.ledger_total_since("ai_cost", now - 86400) + st.ledger_total_since("ai_sponsored", now - 86400))
+        checks = st.decisions(200, kind="decision", since=now - 86400)
+        avg = sum(d["cost"] or 0 for d in checks) / len(checks) if checks else None
+        left = max(tier["budget"] - tier["spent"], 0)
+        if tier.get("learning"):
+            phase = self.learning(eng, now)
+            ends = phase["end"]
+        else:
+            d = datetime.fromtimestamp(now, timezone.utc)
+            ends = int(datetime(d.year + d.month // 12, d.month % 12 + 1, 1, tzinfo=timezone.utc).timestamp())
+        days_left = max((ends - now) / 86400, 0.01)
+        text = (f"- Pace: {len(checks)} checks in the last 24 hours" + (f" at about ${avg:.3f} each" if avg else "")
+                + f", ${day:.2f} in total. ${left:.2f} left for the next {days_left:.1f} days, about ${left / days_left:.2f} a day.")
+        if day > 0 and left / day < days_left:
+            text += f" At today's pace it runs out in {left / day:.1f} days, after which you drop to the cheaper model or sleep."
+        return text
 
     def _market_block(self, eng, candles) -> str:
         s, m = self.s.strategy, eng.market

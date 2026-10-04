@@ -150,3 +150,18 @@ def test_no_learning_phase_by_default():
     eng, fake, market, clock = make_multi([tool_reply("submit_decisions", actions())])
     eng.tick()
     assert eng.brain.learning(eng, clock.t) is None and eng.store.ledger_total("ai_cost") < 0
+
+
+def test_claude_can_check_back_in_15_minutes_and_sees_its_pace():
+    eng, fake, market, clock = make_multi([tool_reply("submit_decisions", actions(hours=0.25))] * 3)
+    eng.brain.c.min_check_hours, eng.brain.c.min_minutes_between_wakes = 0.25, 15
+    eng.tick()
+    clock.t += 10 * 60
+    eng.tick()
+    assert len(fake.requests) == 1
+    clock.t += 6 * 60
+    eng.tick()
+    assert len(fake.requests) == 2
+    ctx = fake.requests[1]["messages"][0]["content"]
+    assert "Scheduled check-in" in ctx and "- Pace: 1 checks in the last 24 hours" in ctx
+    assert "no limit on how often you trade" in fake.requests[1]["system"]

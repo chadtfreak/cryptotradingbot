@@ -25,10 +25,10 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Claude's trading research now covers nearly 7 years and 30 coins (about
-  20,000 trades) instead of 2 years, split by market mood, so it knows when
-  each type of trade works. Breakouts are the one steady edge; pullbacks,
-  range fades and crowded-funding fades lose money, and its playbook now says so.
+  Claude now decides how often to look and trade: it can check back in as
+  little as 15 minutes, and market events can wake it every 15 minutes. It sees
+  how fast it's using its thinking budget so it can judge whether a quick look
+  is worth it. Version 1.8 added nearly 7 years of trading research.
 dependencies: []
 path: ""
 defaultUsername: ""
