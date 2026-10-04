@@ -130,6 +130,11 @@ def record_close(store, coin: str, pos: dict, pnl: float, fraction: float, now: 
     rec = {"coin": coin, "side": "long" if qty > 0 else "short", "setup": pos.get("setup") or "other",
            "opened": pos.get("opened_at"), "closed": now, "pnl": total, "r": total / risk if risk > 0 else None,
            "entry": abs(pos["cost_basis"] / qty) if qty else None, "exit": exit_price, "reason": reason[:160]}
+    unit, entry = pos.get("risk_unit"), pos.get("entry_px")
+    if unit and entry and pos.get("best") is not None:  # how far it went for and against before closing
+        d = 1 if qty > 0 else -1
+        rec["mfe_r"] = d * (pos["best"] - entry) / unit
+        rec["mae_r"] = d * (entry - pos["worst"]) / unit
     store.set("trade_records", ((store.get("trade_records") or []) + [rec])[-KEEP_RESULTS:])
     pending = store.get("trade_reviews_pending") or []
     store.set("trade_reviews_pending", (pending + [rec])[-5:])
@@ -154,13 +159,22 @@ def stats(store) -> dict:
                 "avg_r": sum(rs) / len(rs) if rs else None, "total_r": sum(rs) if rs else 0.0,
                 "pnl": sum(r.get("pnl") or 0 for r in rows)}
 
+    moved = [t for t in trades if t.get("mfe_r") is not None and t.get("r") is not None]
+    wins, losses = [t for t in moved if t["r"] > 0], [t for t in moved if t["r"] <= 0]
+    avg = lambda xs: sum(xs) / len(xs) if xs else None
+    movement = {"n": len(moved), "winners": len(wins), "losers": len(losses),
+                "win_mae": avg([t["mae_r"] for t in wins]), "win_mfe": avg([t["mfe_r"] for t in wins]),
+                "win_kept": avg([t["r"] for t in wins]), "loss_mfe": avg([t["mfe_r"] for t in losses]),
+                "losers_were_up_1r": sum(1 for t in losses if t["mfe_r"] >= 1),
+                "winners_nearly_stopped": sum(1 for t in wins if t["mae_r"] >= 0.8)}
+
     calib = []
     for lo, hi in ((0, 45), (45, 60), (60, 75), (75, 101)):
         b = [c for c in calls if lo <= c["prob"] < hi]
         if b:
             calib.append({"range": f"{lo} to {min(hi, 100)}%", "n": len(b), "said": sum(c["prob"] for c in b) / len(b),
                           "hit": sum(1 for c in b if c["exit"] == "target") / len(b) * 100})
-    return {"calls": summary(calls), "calls_by_setup": {k: summary(v) for k, v in _group(calls, "setup").items()},
+    return {"movement": movement, "calls": summary(calls), "calls_by_setup": {k: summary(v) for k, v in _group(calls, "setup").items()},
             "calibration": calib, "trades": summary(trades),
             "trades_by_setup": {k: summary(v) for k, v in _group(trades, "setup").items()},
             "open_calls": len(store.get("shadow_calls") or []),
@@ -179,6 +193,17 @@ def scorecard(store) -> str:
             lines.append(f"- {k}: {v['n']} trades, {w(v['win'])} winners, {f(v['avg_r'])} average")
     else:
         lines.append("Real trades: none closed yet.")
+    m = s["movement"]
+    if m["n"] >= 3:
+        parts = [f"How your {m['n']} measured trades moved before closing:"]
+        if m["winners"]:
+            parts.append(f"winners went {m['win_mae']:.2f}R against you on average first ({m['winners_nearly_stopped']} came within 0.2R of the stop), "
+                         f"reached +{m['win_mfe']:.2f}R at best and you kept {m['win_kept']:+.2f}R.")
+        if m["losers"]:
+            parts.append(f"Losers reached +{m['loss_mfe']:.2f}R at best on average, and {m['losers_were_up_1r']} of {m['losers']} were up +1R or more before losing.")
+        parts.append("Winners nearly stopped out means stops are tight; losers that were well up means take profit or move to breakeven sooner; "
+                     "a big gap between best and kept means you give back too much.")
+        lines.append(" ".join(parts))
     c = s["calls"]
     if c["n"]:
         lines.append(f"Shadow calls: {c['n']} marked, {w(c['win'])} right, {f(c['avg_r'])} average, {c['total_r']:+.1f}R in total. {s['open_calls']} still open.")
@@ -221,6 +246,8 @@ def _review_one(brain, eng, key, now, model, rec) -> None:
              f"Entry {px(rec['entry']) if rec['entry'] else '?'}, exit {px(rec['exit'])}. Result {rec['pnl']:+.2f} USDC"
              + (f" ({rec['r']:+.2f}R)." if rec.get("r") is not None else "."),
              f"How it closed: {rec['reason']}"]
+    if rec.get("mfe_r") is not None:
+        lines.append(f"While open it reached {rec['mfe_r']:+.2f}R at best and went {rec['mae_r']:.2f}R against you at worst.")
     if why:
         lines.append(f"Why you took it: {why['reasoning']} Your note to self: {why['journal'] or ''}")
     try:

@@ -1,0 +1,458 @@
+{
+"breakout|-1": [
+1628,
+0.106
+],
+"breakout|-1|btc|BTC down": [
+1347,
+0.08
+],
+"breakout|-1|btc|BTC up": [
+281,
+0.231
+],
+"breakout|-1|funding|longs crowded": [
+50,
+0.25
+],
+"breakout|-1|funding|normal": [
+963,
+0.189
+],
+"breakout|-1|funding|shorts crowded": [
+615,
+-0.036
+],
+"breakout|-1|trend|choppy": [
+959,
+0.2
+],
+"breakout|-1|trend|trending": [
+669,
+-0.028
+],
+"breakout|-1|vol|high vol": [
+920,
+0.093
+],
+"breakout|-1|vol|low vol": [
+708,
+0.123
+],
+"breakout|1": [
+1875,
+0.087
+],
+"breakout|1|btc|BTC down": [
+210,
+0.011
+],
+"breakout|1|btc|BTC up": [
+1665,
+0.097
+],
+"breakout|1|funding|longs crowded": [
+362,
+-0.036
+],
+"breakout|1|funding|normal": [
+1313,
+0.117
+],
+"breakout|1|funding|shorts crowded": [
+200,
+0.118
+],
+"breakout|1|trend|choppy": [
+896,
+0.118
+],
+"breakout|1|trend|trending": [
+979,
+0.06
+],
+"breakout|1|vol|high vol": [
+965,
+0.021
+],
+"breakout|1|vol|low vol": [
+910,
+0.158
+],
+"failed_breakout|-1": [
+1086,
+-0.063
+],
+"failed_breakout|-1|btc|BTC down": [
+114,
+0.159
+],
+"failed_breakout|-1|btc|BTC up": [
+972,
+-0.089
+],
+"failed_breakout|-1|funding|longs crowded": [
+256,
+-0.089
+],
+"failed_breakout|-1|funding|normal": [
+735,
+-0.036
+],
+"failed_breakout|-1|funding|shorts crowded": [
+95,
+-0.202
+],
+"failed_breakout|-1|trend|choppy": [
+298,
+-0.091
+],
+"failed_breakout|-1|trend|trending": [
+788,
+-0.052
+],
+"failed_breakout|-1|vol|high vol": [
+676,
+-0.039
+],
+"failed_breakout|-1|vol|low vol": [
+410,
+-0.102
+],
+"failed_breakout|1": [
+791,
+0.084
+],
+"failed_breakout|1|btc|BTC down": [
+701,
+0.109
+],
+"failed_breakout|1|btc|BTC up": [
+90,
+-0.116
+],
+"failed_breakout|1|funding|longs crowded": [
+14,
+-0.388
+],
+"failed_breakout|1|funding|normal": [
+382,
+0.017
+],
+"failed_breakout|1|funding|shorts crowded": [
+395,
+0.165
+],
+"failed_breakout|1|trend|choppy": [
+278,
+-0.038
+],
+"failed_breakout|1|trend|trending": [
+513,
+0.15
+],
+"failed_breakout|1|vol|high vol": [
+482,
+0.198
+],
+"failed_breakout|1|vol|low vol": [
+309,
+-0.094
+],
+"momentum|-1": [
+1733,
+-0.015
+],
+"momentum|-1|btc|BTC down": [
+1290,
+-0.03
+],
+"momentum|-1|btc|BTC up": [
+443,
+0.029
+],
+"momentum|-1|funding|longs crowded": [
+56,
+0.409
+],
+"momentum|-1|funding|normal": [
+993,
+-0.046
+],
+"momentum|-1|funding|shorts crowded": [
+684,
+-0.005
+],
+"momentum|-1|trend|choppy": [
+1286,
+0.03
+],
+"momentum|-1|trend|trending": [
+447,
+-0.146
+],
+"momentum|-1|vol|high vol": [
+1519,
+-0.03
+],
+"momentum|-1|vol|low vol": [
+214,
+0.093
+],
+"momentum|1": [
+2062,
+0.079
+],
+"momentum|1|btc|BTC down": [
+447,
+-0.022
+],
+"momentum|1|btc|BTC up": [
+1615,
+0.107
+],
+"momentum|1|funding|longs crowded": [
+425,
+0.046
+],
+"momentum|1|funding|normal": [
+1396,
+0.087
+],
+"momentum|1|funding|shorts crowded": [
+241,
+0.086
+],
+"momentum|1|trend|choppy": [
+1460,
+0.089
+],
+"momentum|1|trend|trending": [
+602,
+0.055
+],
+"momentum|1|vol|high vol": [
+1398,
+0.037
+],
+"momentum|1|vol|low vol": [
+664,
+0.168
+],
+"pullback|-1": [
+4869,
+0.009
+],
+"pullback|-1|btc|BTC down": [
+3313,
+-0.012
+],
+"pullback|-1|btc|BTC up": [
+1556,
+0.054
+],
+"pullback|-1|funding|longs crowded": [
+165,
+0.01
+],
+"pullback|-1|funding|normal": [
+3352,
+0.054
+],
+"pullback|-1|funding|shorts crowded": [
+1352,
+-0.102
+],
+"pullback|-1|trend|choppy": [
+3392,
+0.03
+],
+"pullback|-1|trend|trending": [
+1477,
+-0.039
+],
+"pullback|-1|vol|high vol": [
+2235,
+-0.043
+],
+"pullback|-1|vol|low vol": [
+2634,
+0.053
+],
+"pullback|1": [
+4394,
+-0.076
+],
+"pullback|1|btc|BTC down": [
+826,
+-0.243
+],
+"pullback|1|btc|BTC up": [
+3568,
+-0.037
+],
+"pullback|1|funding|longs crowded": [
+572,
+0.022
+],
+"pullback|1|funding|normal": [
+3117,
+-0.09
+],
+"pullback|1|funding|shorts crowded": [
+705,
+-0.093
+],
+"pullback|1|trend|choppy": [
+2975,
+-0.056
+],
+"pullback|1|trend|trending": [
+1419,
+-0.116
+],
+"pullback|1|vol|high vol": [
+2262,
+-0.079
+],
+"pullback|1|vol|low vol": [
+2132,
+-0.072
+],
+"range_fade|-1": [
+668,
+-0.235
+],
+"range_fade|-1|btc|BTC down": [
+207,
+-0.104
+],
+"range_fade|-1|btc|BTC up": [
+461,
+-0.293
+],
+"range_fade|-1|funding|longs crowded": [
+26,
+0.034
+],
+"range_fade|-1|funding|normal": [
+537,
+-0.257
+],
+"range_fade|-1|funding|shorts crowded": [
+105,
+-0.188
+],
+"range_fade|-1|trend|choppy": [
+668,
+-0.235
+],
+"range_fade|-1|vol|high vol": [
+153,
+-0.075
+],
+"range_fade|-1|vol|low vol": [
+515,
+-0.282
+],
+"range_fade|1": [
+422,
+-0.197
+],
+"range_fade|1|btc|BTC down": [
+174,
+-0.152
+],
+"range_fade|1|btc|BTC up": [
+248,
+-0.228
+],
+"range_fade|1|funding|longs crowded": [
+30,
+-0.408
+],
+"range_fade|1|funding|normal": [
+277,
+-0.255
+],
+"range_fade|1|funding|shorts crowded": [
+115,
+-0.0
+],
+"range_fade|1|trend|choppy": [
+422,
+-0.197
+],
+"range_fade|1|vol|high vol": [
+230,
+-0.095
+],
+"range_fade|1|vol|low vol": [
+192,
+-0.319
+],
+"squeeze_fade|-1": [
+559,
+-0.055
+],
+"squeeze_fade|-1|btc|BTC down": [
+28,
+0.068
+],
+"squeeze_fade|-1|btc|BTC up": [
+531,
+-0.062
+],
+"squeeze_fade|-1|funding|longs crowded": [
+559,
+-0.055
+],
+"squeeze_fade|-1|trend|choppy": [
+236,
+-0.119
+],
+"squeeze_fade|-1|trend|trending": [
+323,
+-0.009
+],
+"squeeze_fade|-1|vol|high vol": [
+450,
+-0.031
+],
+"squeeze_fade|-1|vol|low vol": [
+109,
+-0.156
+],
+"squeeze_fade|1": [
+746,
+-0.128
+],
+"squeeze_fade|1|btc|BTC down": [
+596,
+-0.117
+],
+"squeeze_fade|1|btc|BTC up": [
+150,
+-0.172
+],
+"squeeze_fade|1|funding|shorts crowded": [
+746,
+-0.128
+],
+"squeeze_fade|1|trend|choppy": [
+413,
+-0.196
+],
+"squeeze_fade|1|trend|trending": [
+333,
+-0.044
+],
+"squeeze_fade|1|vol|high vol": [
+380,
+-0.094
+],
+"squeeze_fade|1|vol|low vol": [
+366,
+-0.163
+]
+}

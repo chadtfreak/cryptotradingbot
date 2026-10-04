@@ -27,6 +27,7 @@ class Decision:
     sell_fraction: float = 1.0  # for sells: share of the position to sell
     coin: str | None = None  # None means the bot's primary coin
     setup: str | None = None  # what kind of trade this is, for the setup scorecard
+    target: float | None = None  # take-profit price; for "target" decisions, None removes it
 
 
 @dataclass

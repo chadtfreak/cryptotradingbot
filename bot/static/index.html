@@ -202,7 +202,7 @@
   </section>
 
   <section class="split hidden" id="claude-extra">
-    <div class="card"><h2>Market scanner</h2><div class="sub" style="margin-bottom:8px">The coins Claude finds most interesting right now, out of every coin trading over <span id="minvol">$20M</span> a day. &#9650; means it just broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate.</div><div class="tablewrap" id="scanner"></div></div>
+    <div class="card"><h2>Market scanner</h2><div class="sub" style="margin-bottom:8px">The coins Claude finds most interesting right now, out of every coin trading over <span id="minvol">$20M</span> a day. &#9650; means it just broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate. Setup shows any backtested playbook setup firing right now.</div><div class="tablewrap" id="scanner"></div></div>
     <div class="card">
       <h2>Practice run</h2>
       <div class="sub">Claude trades 60 random moments from the last two years with the coin and dates hidden, and calls which way each one goes even when it doesn't trade. Then it gets marked on what actually happened and writes up its lessons. Costs about $2 to $5 of Anthropic credit, billed to your Anthropic account, not the bot.</div>
@@ -317,13 +317,13 @@ function renderStatus(s) {
   const fr = s.funding_rate == null || ps.length ? "" : `<dl><dt>Funding now</dt><dd>${(s.funding_rate * 100).toFixed(4)}%/h</dd></dl>`;
   const fund = s.funding_paid ? `<div class="sub" style="margin-top:8px">Funding ${s.funding_paid >= 0 ? "paid" : "earned"} so far: ${usd(Math.abs(s.funding_paid))}</div>` : "";
   $("position").innerHTML = !ps.length ? `<div class="empty">Holding ${usd(s.cash)} USDC, no open positions.</div>${fr}${fund}` : `
-    <div class="tablewrap"><table class="compact"><thead><tr><th>Coin</th><th>Value</th><th>Stop</th><th>P&amp;L</th></tr></thead><tbody>${
+    <div class="tablewrap"><table class="compact"><thead><tr><th>Coin</th><th>Value</th><th>Stop</th><th>Target</th><th>P&amp;L</th></tr></thead><tbody>${
       ps.map((p) => `<tr title="${esc(p.setup || "")}">
         <td style="white-space:normal"><strong>${esc(p.coin)}</strong> <strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong><br><span class="sub">from ${px(p.entry)}${p.setup ? `, ${esc(p.setup.replace("_", " "))}` : ""}</span></td>
-        <td>${usd(p.value)}</td><td>${px(p.stop)}</td>
-        <td class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}</td></tr>`).join("")
+        <td>${usd(p.value)}</td><td>${px(p.stop)}${p.stage ? `<br><span class="sub">${p.stage}</span>` : ""}</td><td>${p.target ? px(p.target) : "-"}</td>
+        <td class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}${p.r_now != null ? `<br><span class="sub">${p.r_now > 0 ? "+" : ""}${p.r_now.toFixed(1)}R</span>` : ""}</td></tr>`).join("")
     }</tbody></table></div>
-    <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.</div>${fund}`;
+    <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.${s.open_risk != null && s.equity ? ` Open risk if every stop is hit: ${usd(s.open_risk)} (${(s.open_risk / s.equity * 100).toFixed(1)}% of equity${s.max_total_risk ? `, cap ${Math.round(s.max_total_risk * 100)}%` : ""}).` : ""}</div>${fund}`;
   if (s.min_volume_usd) $("minvol").textContent = `$${Math.round(s.min_volume_usd / 1e6)}M`;
   if (s.brain && s.brain.sponsored > 0) $("costs-note").textContent += `, plus ${usd(s.brain.sponsored)} thinking paid by you`;
   renderBrain(s.brain);
@@ -406,9 +406,11 @@ function renderScorecard(sc) {
       ${[...setups].map((k) => { const t = (sc.trades_by_setup || {})[k] || { n: 0 }, c = (sc.calls_by_setup || {})[k] || { n: 0 };
         return `<tr><td>${esc(k.replace("_", " "))}</td><td>${t.n}</td><td>${r(t.avg_r)}</td><td>${c.n}</td><td>${w(c.win)}</td><td>${r(c.avg_r)}</td></tr>`; }).join("")}
       </tbody></table>`;
-  $("score-calib").textContent = (sc.calibration || []).length
+  const mv = sc.movement || {};
+  const moveText = mv.n >= 3 ? ` Trade movement (${mv.n} trades): winners went ${mv.win_mae == null ? "-" : mv.win_mae.toFixed(2) + "R"} against first and kept ${mv.win_kept == null ? "-" : mv.win_kept.toFixed(2) + "R"} of a best ${mv.win_mfe == null ? "-" : mv.win_mfe.toFixed(2) + "R"}; ${mv.losers_were_up_1r} of ${mv.losers} losers were up +1R first.` : "";
+  $("score-calib").textContent = ((sc.calibration || []).length
     ? "How sure it said it was vs how often the target was hit: " + sc.calibration.map((b) => `said ${Math.round(b.said)}%, hit ${Math.round(b.hit)}% (${b.n})`).join("; ") + `. ${sc.open_calls} calls open.`
-    : (sc.calls.n ? `${sc.open_calls} calls open.` : "");
+    : (sc.calls.n ? `${sc.open_calls} calls open.` : "")) + moveText;
   $("score-calls").innerHTML = (sc.recent_calls || []).length
     ? `<table class="compact"><tbody>${sc.recent_calls.map((c) => `<tr><td>${when(c.closed)}</td><td><strong>${esc(c.coin)}</strong> ${c.dir > 0 ? "long" : "short"}</td>
         <td>${esc(c.exit === "time" ? "time up" : c.exit)}</td><td class="${c.r > 0 ? "good" : c.r < 0 ? "bad" : ""}">${r(c.r)}</td></tr>`).join("")}</tbody></table>`
@@ -454,11 +456,11 @@ async function promotion(approve) {
 
 function renderScanner(rows) {
   if (!rows.length) { $("scanner").innerHTML = `<div class="empty">Scans the market hourly once Claude is awake.</div>`; return; }
-  $("scanner").innerHTML = `<table class="compact"><thead><tr><th>Coin</th><th>Price</th><th>24h</th><th>Trend</th><th>Funding</th><th>Vol</th></tr></thead><tbody>${
+  $("scanner").innerHTML = `<table class="compact"><thead><tr><th>Coin</th><th>Price</th><th>24h</th><th>Trend</th><th>Funding</th><th>Vol</th><th>Setup</th></tr></thead><tbody>${
     rows.map((r) => `<tr>
       <td><strong>${esc(r.coin)}</strong>${r.breakout ? ` <span class="good" title="Closed above its 20-day high">&#9650;</span>` : r.breakdown ? ` <span class="bad" title="Closed below its 20-day low">&#9660;</span>` : ""}</td>
       <td>${px(r.price)}</td><td class="${r.ch_24h > 0 ? "good" : r.ch_24h < 0 ? "bad" : ""}">${pct(r.ch_24h)}</td>
-      <td>${esc(r.trend)}</td><td>${r.funding_apr == null ? "-" : r.funding_apr.toFixed(0) + "%/yr"}</td><td>$${r.volume_m >= 1000 ? (r.volume_m / 1000).toFixed(1) + "B" : Math.round(r.volume_m) + "M"}</td></tr>`).join("")
+      <td>${esc(r.trend)}</td><td>${r.funding_apr == null ? "-" : r.funding_apr.toFixed(0) + "%/yr"}</td><td>$${r.volume_m >= 1000 ? (r.volume_m / 1000).toFixed(1) + "B" : Math.round(r.volume_m) + "M"}</td><td class="sub">${esc((r.setups || []).join(", ")) || "-"}</td></tr>`).join("")
   }</tbody></table>`;
 }
 

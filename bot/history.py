@@ -11,6 +11,7 @@ called 2025 to 2026 moves right 50% of the time, no better than a coin flip, so 
 
 import bisect
 import csv
+import json
 import io
 import time
 import zipfile
@@ -139,6 +140,8 @@ def main(cache: Path) -> None:
     print("Downloading history from Binance's public archive (cached, so later runs are quick)...")
     data = download(cache)
     print("Backtesting the setups on the long history, by market mood...")
-    text = research.run_long(data)
+    rows = research.collect(data)
+    text = research.report(rows, len(data))
     research.OUT.write_text(text + "\n")
+    research.REGIMES.write_text(json.dumps(research.cells(rows), indent=0, sort_keys=True) + "\n")
     print(text + f"\n\nSaved to {research.OUT}")

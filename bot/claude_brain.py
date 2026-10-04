@@ -21,7 +21,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import learning, scanner
+from . import learning, macro, research, scanner
 from .career import Career, month_key
 from .config import Settings
 from .indicators import atr, ema, rsi
@@ -59,7 +59,14 @@ Actions (zero, one or several per decision; an empty list means hold):
 - short: go short a coin, or add to your short. Give position_pct and stop_price above the price. Choosing the opposite side of a position you hold closes it first.
 - close: close close_pct percent of a position (100 to exit completely).
 - set_stop: keep a position and move its stop to stop_price.
-Tag every new trade with its setup (breakout, pullback, range_fade, squeeze_fade, failed_breakout, momentum or other).
+- set_target: keep a position and set its take-profit to target_price (null removes it and lets the trade run on its stop). This also restarts its time stop.
+Tag every new trade with its setup (breakout, pullback, range_fade, squeeze_fade, failed_breakout, momentum or other). You can give a target_price with a new trade; otherwise it gets the default.
+
+Trade management runs automatically between your checks, like a professional's standing orders: once a trade is up by the amount it risked (+1R) its stop moves to breakeven; at its take-profit (default +{target_r:g}R) half is banked and the rest trails 1R behind the best price; and a trade that hasn't reached +1R within {time_stop:g} days is closed. You only need to step in when you see a reason to (set_stop, set_target or close).
+
+Size from risk, not conviction alone: a trade risks position_pct times its stop distance. To risk the 2% maximum with a 5% stop, position_pct is 40; with a 10% stop, 20. Bigger requests are trimmed to fit the per-trade and portfolio risk limits.
+
+Open interest is the total size of open positions in a coin. Price up with open interest up means new longs are driving it (fuel for the trend); price up with open interest down means shorts closing (often runs out of steam). Price down with open interest up means new shorts; price down with open interest down means longs giving up.
 
 Perps charge or pay funding every hour: when the rate is positive, longs pay shorts, and when it is negative, shorts pay longs. It comes out of your balance like any other cost.
 
@@ -95,14 +102,15 @@ Be a tough, honest coach. What worked? What was a mistake, and was it bad luck o
 ACTION_SCHEMA = {
     "type": "object",
     "properties": {
-        "action": {"type": "string", "enum": ["long", "short", "close", "set_stop"]},
+        "action": {"type": "string", "enum": ["long", "short", "close", "set_stop", "set_target"]},
         "coin": {"type": "string", "description": "Hyperliquid coin name, for example ETH, BTC, SOL."},
         "position_pct": {"type": ["number", "null"], "description": "For long or short: percent of equity for this trade."},
         "close_pct": {"type": ["number", "null"], "description": "For close: percent of the position to close, 100 to exit completely."},
         "stop_price": {"type": ["number", "null"], "description": "For long, short or set_stop: the stop price for the whole position."},
         "setup": {"type": ["string", "null"], "description": "For new trades: breakout, pullback, range_fade, squeeze_fade, failed_breakout, momentum or other."},
+        "target_price": {"type": ["number", "null"], "description": "For long, short or set_target: the take-profit price. Null on a new trade means the default."},
     },
-    "required": ["action", "coin", "position_pct", "close_pct", "stop_price", "setup"],
+    "required": ["action", "coin", "position_pct", "close_pct", "stop_price", "setup", "target_price"],
     "additionalProperties": False,
 }
 
@@ -146,6 +154,8 @@ def rules_text(g, floor: float) -> str:
     rules = [
         f"- Every new trade needs a stop {g.min_stop_distance_pct:g}% to {g.max_stop_distance_pct:g}% away from price (below for longs, above for shorts).",
         f"- Trades are trimmed so that hitting the stop loses at most {g.max_risk_per_trade * 100:g}% of equity across that coin's whole position.",
+        *([f"- All open trades together can risk at most {g.max_total_risk * 100:g}% of equity (loss from entry if every stop is hit). "
+           "Trades at breakeven risk nothing, so moving stops up frees room."] if g.max_total_risk else []),
         "- You can go short." if g.allow_short else "- No shorting: long or cash only.",
         f"- No leverage: total exposure across all positions is capped at {g.max_leverage:g}x your equity.",
         f"- Up to {g.max_positions} positions at once, one per coin." if g.max_positions > 1 else "- One position at a time.",
@@ -208,6 +218,7 @@ class ClaudeBrain:
         self._client_key = None
         self._use_fallbacks = True
         self._scan: tuple[float, list[dict]] = (0.0, [])
+        self.macro = macro.Macro(clock=clock) if self.c.macro_feeds else None
 
     # Credentials
     def api_key(self, eng) -> str | None:
@@ -290,10 +301,44 @@ class ClaudeBrain:
         if now - self._scan[0] >= SCAN_EVERY or not self._scan[1]:
             try:
                 feats = scanner.scan(eng.market, eng.g.min_volume_usd, list(eng.positions))
+                self._track_oi(eng, feats, now)
                 self._scan = (now, feats)
             except Exception:
                 self._scan = (now, self._scan[1])
         return self._scan[1]
+
+    def _track_oi(self, eng, feats: list[dict], now: int) -> None:
+        """Hyperliquid only reports open interest as it is now, so keep hourly snapshots to see the change."""
+        hist = eng.store.get("oi_history") or {}
+        for f in feats:
+            oi = f.get("open_interest")
+            if not oi:
+                continue
+            rows = [r for r in hist.get(f["coin"], []) if now - r[0] <= 30 * 3600] + [[now, oi]]
+            hist[f["coin"]] = rows
+            old = [r for r in rows if now - r[0] >= 20 * 3600]
+            f["oi_24h"] = (oi / old[0][1] - 1) * 100 if old and old[0][1] else None
+        eng.store.set("oi_history", {c: r for c, r in hist.items() if r and now - r[-1][0] <= 30 * 3600})
+
+    def _event_wake(self, eng, now: int) -> str | None:
+        """Wakes Claude shortly before and just after big scheduled US economic releases."""
+        if self.macro is None:
+            return None
+        try:
+            events = self.macro.events(impact=("High",))
+        except Exception:
+            return None
+        seen = set(eng.store.get("claude_events_seen") or [])
+        for e in events:
+            before, after = e["ts"] - now, now - e["ts"]
+            for tag, hit, msg in (("pre", 0 < before <= 45 * 60, f"US economic news coming: {e['title']} in {before / 60:.0f} minutes"),
+                                  ("post", 0 <= after <= 30 * 60, f"US economic news just out: {e['title']} ({after / 60:.0f} minutes ago)")):
+                key = f"{e['title']}|{e['ts']}|{tag}"
+                if hit and key not in seen:
+                    seen.add(key)
+                    eng.store.set("claude_events_seen", sorted(seen)[-60:])
+                    return msg
+        return None
 
     # When to wake
     def wake_reason(self, eng, candles, now: int, tier: dict) -> str | None:
@@ -346,6 +391,10 @@ class ClaudeBrain:
                         seen[key] = today
                         st.set("claude_alerts_seen", seen)
                         return f"Scanner: {msg}"
+
+        event = self._event_wake(eng, now)
+        if event:
+            return event
 
         if tier["heartbeat"]:
             next_check = st.get("claude_next_check_ts") or last + self.c.heartbeat_hours * 3600
@@ -433,6 +482,7 @@ class ClaudeBrain:
             max_positions=g.max_positions,
             style=AGGRESSIVE_STYLE if g.style == "full send" else PATIENT_STYLE,
             rules=rules_text(g, eng.floor), min_check=f"{self.c.min_check_hours:g}",
+            target_r=g.target_r, time_stop=g.time_stop_hours / 24,
             playbook=knowledge("playbook.md"),
             stats=f"\n# Backtested setup statistics\n{stats}\n" if stats else "",
             practice=f"\n# Lessons from your practice run on historical charts\n{practice}\n" if practice else "")
@@ -464,7 +514,7 @@ class ClaudeBrain:
             if act in ("long", "short"):
                 pct = a.get("position_pct") or 0
                 decisions.append(Decision("buy" if act == "long" else "short", why, stop, size_usd=equity * pct / 100,
-                                          coin=coin, setup=a.get("setup")))
+                                          coin=coin, setup=a.get("setup"), target=a.get("target_price")))
                 labels.append(f"{act.upper()} {coin} {pct:g}%")
             elif act == "close":
                 frac = (a.get("close_pct") or 100) / 100
@@ -473,6 +523,10 @@ class ClaudeBrain:
             elif act == "set_stop" and stop:
                 decisions.append(Decision("hold", "Claude moved the stop", stop, coin=coin))
                 labels.append(f"STOP {coin} {px(stop)}")
+            elif act == "set_target":
+                tgt = a.get("target_price")
+                decisions.append(Decision("target", "Claude set the take-profit", coin=coin, target=tgt))
+                labels.append(f"TARGET {coin} {px(tgt) if tgt else 'none'}")
         summary = ", ".join(labels) or "HOLD"
         called = learning.add_calls(eng.store, d.get("calls") or [], eng.prices, now)
         if called:
@@ -496,6 +550,8 @@ class ClaudeBrain:
         lines.append(f"- Equity {equity:.2f} USDC (put in so far {eng.contributed:.2f}, born {fmt_time(st.get('started_at'))}). "
                      f"Survival floor {eng.floor:.2f}. Health {tier['health']:.0%}.")
         lines.append(f"- Cash {eng.cash:.2f} USDC. Exposure {eng.exposure():.2f} USDC of a {equity * eng.g.max_leverage:.2f} limit.")
+        if eng.positions:
+            lines.append(self._portfolio_text(eng, equity))
         if not eng.positions:
             lines.append("- No open positions.")
         for coin, p in eng.positions.items():
@@ -503,8 +559,21 @@ class ClaudeBrain:
             side = "LONG" if p["qty"] > 0 else "SHORT"
             entry = abs(p["cost_basis"] / p["qty"])
             unreal = p["qty"] * price - p["cost_basis"] if price else 0
-            lines.append(f"- {side} {coin}: {abs(p['qty']):.6g} ({abs(p['qty']) * (price or 0):.2f} USDC), entry {px(entry)}, now {px(price or 0)}, "
-                         f"unrealised {unreal:+.2f}, stop {px(p['stop']) if p.get('stop') else 'none'}, setup {p.get('setup') or '?'}.")
+            unit = p.get("risk_unit")
+            r_now = f" ({(price - entry) / unit * (1 if p['qty'] > 0 else -1):+.1f}R)" if unit and price else ""
+            plan = []
+            if p.get("target"):
+                plan.append(f"target {px(p['target'])}")
+            if p.get("half_taken"):
+                plan.append("half banked, trailing the rest")
+            elif p.get("be_done"):
+                plan.append("stop at breakeven or better")
+            elif p.get("managed_since") and eng.g.manage_trades:
+                left = eng.g.time_stop_hours - (now - p["managed_since"]) / 3600
+                plan.append(f"time stop in {max(left, 0):.0f}h unless it reaches +1R")
+            lines.append(f"- {side} {coin}: {abs(p['qty']):.6g} ({abs(p['qty']) * (price or 0):.2f} USDC), entry {px(entry)}, now {px(price or 0)}{r_now}, "
+                         f"unrealised {unreal:+.2f}, stop {px(p['stop']) if p.get('stop') else 'none'}, setup {p.get('setup') or '?'}"
+                         + (f", {', '.join(plan)}" if plan else "") + ".")
         funding = -st.ledger_total("funding")
         if funding:
             lines.append(f"- Funding {'paid' if funding >= 0 else 'received'} so far: {abs(funding):.3f} USDC.")
@@ -532,6 +601,17 @@ class ClaudeBrain:
             lines.append("## Can't trade on this venue right now (checked in the last 12 hours)")
             lines += [f"- {c}: {v['why']}." for c, v in bad.items()]
             lines.append("Don't spend checks retrying these; pick from the others.\n")
+        if self.macro is not None:
+            try:
+                news = macro.upcoming_text(self.macro.events(), now)
+            except Exception:
+                news = None
+            if news:
+                lines.append("## Scheduled US economic news (big moves and spreads often come right around these)")
+                lines.append(news + "\n")
+        evidence = self._research_block(eng, feats) if feats else ""
+        if evidence:
+            lines.append(evidence)
         lines.append(f"## {eng.primary} in detail")
         lines.append(self._market_block(eng, candles))
         for coin in eng.positions:
@@ -563,6 +643,87 @@ class ClaudeBrain:
         lines.append(st.get("lessons") or "None yet from live trading. Lean on your playbook, the setup stats and your practice lessons.")
         lines.append("\nDecide now and call submit_decisions.")
         return "\n".join(lines)
+
+    def _beta(self, eng, coin: str) -> float | None:
+        """How much a coin moves for each 1% BTC moves, from the last 20 days of 4h candles. Cached hourly."""
+        cache = getattr(self, "_betas", {})
+        self._betas = cache
+        hour = int(self.clock()) // 3600
+        if coin == "BTC":
+            return 1.0
+        if (coin, hour) in cache:
+            return cache[(coin, hour)]
+        try:
+            a = [c.close for c in eng.market.candles(240, coin=coin, count=121)]
+            b = [c.close for c in eng.market.candles(240, coin="BTC", count=121)]
+            n = min(len(a), len(b))
+            ra = [a[i] / a[i - 1] - 1 for i in range(len(a) - n + 1, len(a))]
+            rb = [b[i] / b[i - 1] - 1 for i in range(len(b) - n + 1, len(b))]
+            mb = sum(rb) / len(rb)
+            var = sum((x - mb) ** 2 for x in rb)
+            beta = sum((x - mb) * (y - sum(ra) / len(ra)) for x, y in zip(rb, ra)) / var if var else None
+        except Exception:
+            beta = None
+        cache[(coin, hour)] = beta
+        return beta
+
+    def _portfolio_text(self, eng, equity: float) -> str:
+        longs = sum(abs(p["qty"]) * eng.prices.get(c, 0) for c, p in eng.positions.items() if p["qty"] > 0)
+        shorts = sum(abs(p["qty"]) * eng.prices.get(c, 0) for c, p in eng.positions.items() if p["qty"] < 0)
+        btc_eq, missing = 0.0, []
+        for c, p in eng.positions.items():
+            beta = self._beta(eng, c)
+            if beta is None:
+                missing.append(c)
+                continue
+            btc_eq += p["qty"] * eng.prices.get(c, 0) * beta
+        risk, cap = eng.open_risk(), eng.g.max_total_risk
+        text = (f"- Portfolio: {longs:.2f} USDC long and {shorts:.2f} short, so net {longs - shorts:+.2f} ({(longs - shorts) / equity * 100:+.0f}% of equity). "
+                f"Behaves like {btc_eq:+.2f} USDC of BTC ({btc_eq / equity * 100:+.0f}% of equity): if BTC drops 5%, expect about {-btc_eq * 0.05:+.2f}. "
+                f"Open risk if every stop is hit: {risk:.2f} USDC ({risk / equity * 100:.1f}% of equity")
+        text += f", cap {cap * 100:g}%)." if cap else ")."
+        if missing:
+            text += f" (No BTC link measured for {', '.join(missing)}.)"
+        if abs(btc_eq) > 0.6 * equity:
+            text += " Most of your positions are one bet on BTC's direction."
+        return text
+
+    def _regimes(self) -> dict:
+        if getattr(self, "_regime_cells", None) is None:
+            try:
+                self._regime_cells = json.loads(research.REGIMES.read_text())
+            except Exception:
+                self._regime_cells = {}
+        return self._regime_cells
+
+    def _research_block(self, eng, feats: list[dict], top: int = 12) -> str:
+        """Which playbook setups are firing on the coins Claude sees, and how those setups did in
+        these market conditions over years of history."""
+        cells = self._regimes()
+        if not cells:
+            return ""
+        btc = next((f for f in feats if f["coin"] == "BTC"), None)
+        btc_up = None if btc is None else btc["trend"] == "up"
+        held = set(eng.positions)
+        fmt = lambda c: f"{c[1]:+.2f}R ({c[0]})" if c else "no data"
+        lines = []
+        for k, f in enumerate(feats):
+            if not f.get("setups") or (k >= top and f["coin"] not in held):
+                continue
+            reg = research.regime(btc_up, f.get("trend_atr", 0), f["funding_apr"], f["atr_pct"], f.get("median_vol", 0))
+            tags = ", ".join(v for v in (reg["btc"], reg["trend"], reg["funding"] and f"{reg['funding']} funding", reg["vol"]) if v)
+            for setup, d in f["setups"]:
+                side = "long" if d > 0 else "short"
+                base = cells.get(f"{setup}|{d}")
+                parts = [f"{key_label}: {fmt(cells.get(f'{setup}|{d}|{key}|{reg[key]}'))}"
+                         for key, key_label in (("btc", reg["btc"]), ("trend", reg["trend"]), ("funding", f"funding {reg['funding']}"), ("vol", reg["vol"]))
+                         if reg[key]]
+                lines.append(f"- {f['coin']} ({tags}): {setup} {side} is firing now. Over 7 years: {fmt(base)} overall; in conditions like these, "
+                             + "; ".join(parts) + ".")
+        if not lines:
+            return "## Playbook setups firing now\nNone of the backtested setups is firing on the top coins right now.\n"
+        return ("## Playbook setups firing now, with how they did in conditions like these (2020 to 2026, 30 coins)\n"
+                "Trade counts in brackets; under about 300 is noisy.\n" + "\n".join(lines) + "\n")
 
     def _pace_text(self, eng, now: int, tier: dict) -> str:
         """How fast thinking money is going, so Claude can judge how often to look."""
@@ -600,7 +761,7 @@ class ClaudeBrain:
             out.append("Last 20 4h candles (UTC open time, open, high, low, close):")
             for c in candles[-20:]:
                 out.append(f"{datetime.fromtimestamp(c.ts, timezone.utc).strftime('%d %b %H:%M')} {c.open:.2f} {c.high:.2f} {c.low:.2f} {c.close:.2f}")
-        for fn in (self._perp, self._hourly, self._daily, self._btc, self._sentiment):
+        for fn in (self._perp, self._hourly, self._daily, self._btc, self._dominance, self._sentiment):
             try:
                 text = fn(m)
                 if text:
@@ -660,6 +821,13 @@ class ClaudeBrain:
         ch7d = (closes[-1] / closes[-43] - 1) * 100
         return (f"BTC {closes[-1]:,.0f}. 24h {ch24:+.1f}%, 7d {ch7d:+.1f}%. 4h trend {'up' if f > sl else 'down'} "
                 f"(20 EMA {f:,.0f} vs 50 EMA {sl:,.0f}).")
+
+    def _dominance(self, m) -> str | None:
+        d = self.macro.btc_dominance() if self.macro is not None else None
+        if not d:
+            return None
+        return (f"BTC is {d[0]:.1f}% of the whole crypto market; total market value {d[1]:+.1f}% in 24h. "
+                "A rising BTC share usually means money hiding in BTC and alts lagging.")
 
     def _sentiment(self, m) -> str | None:
         fg = m.fear_greed()
@@ -748,5 +916,6 @@ class ClaudeBrain:
             "decisions": eng.store.decisions(20),
             "career": self.career.summary(eng.store, now, eng.bankroll_base),
             "scorecard": learning.stats(eng.store),
-            "scanner": [{k: f[k] for k in ("coin", "price", "ch_24h", "trend", "breakout", "breakdown", "funding_apr", "volume_m")} for f in scan],
+            "scanner": [{**{k: f[k] for k in ("coin", "price", "ch_24h", "trend", "breakout", "breakdown", "funding_apr", "volume_m")},
+                         "setups": [f"{k.replace('_', ' ')} {'long' if d > 0 else 'short'}" for k, d in f.get("setups", [])]} for f in scan],
         }}

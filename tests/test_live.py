@@ -325,3 +325,20 @@ def test_testnet_promotion_needs_spare_test_money():
     eng.store.set("promotion_offer", {"level": 1, "name": "Trader", "amount": 1000.0, "since": 1, "stats": {}})
     with pytest.raises(ValueError, match="test USDC"):
         eng.brain.career.approve(eng, clock.t)
+
+
+def test_rejected_management_order_doesnt_break_the_tick():
+    from tests.test_manage import managed
+    eng, venue, clock = make_live([tool_reply("submit_decision", decision("buy", pct=40, stop=95.0)),
+                                   tool_reply("submit_decision", decision("hold"))])
+    eng.base_g = managed(max_positions=3)
+    eng.tick()
+    assert "ETH" in eng.positions
+    venue.reject = "Order could not immediately match"
+    venue.px = 120.0  # past the target: take-profit tries to sell and is rejected
+    clock.t += 60
+    eng.tick()
+    clock.t += 60
+    eng.tick()
+    warns = [e for e in eng.store.events() if "Trade management for ETH couldn't act" in e["message"]]
+    assert len(warns) == 1 and eng.last_error is None

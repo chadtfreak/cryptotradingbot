@@ -188,6 +188,17 @@ class Engine:
         self.store.log(f"My owner added {amount:,.2f} USDC to my bankroll, now {base:,.2f}. "
                        f"My survival floor moves to {base * ratio:,.2f}.", level="trade", ts=now)
 
+    def open_risk(self, exclude: str | None = None) -> float:
+        """What every open trade would lose against its entry if all stops were hit. A trade whose
+        stop is at breakeven or better risks nothing, which frees room for new trades."""
+        total = 0.0
+        for coin, p in self.positions.items():
+            if coin == exclude or not p.get("stop") or not p["qty"]:
+                continue
+            entry = p.get("entry_px") or abs(p["cost_basis"] / p["qty"])
+            total += max((entry - p["stop"]) * p["qty"], 0.0) if p["qty"] > 0 else max((p["stop"] - entry) * -p["qty"], 0.0)
+        return total
+
     def exposure(self, prices: dict | None = None) -> float:
         prices = prices or self.prices
         return sum(abs(p["qty"]) * prices.get(c, 0) for c, p in self.positions.items())
@@ -276,6 +287,8 @@ class Engine:
         if self.status != RUNNING:
             return
 
+        for coin in list(self.positions):
+            self._track(coin)
         exchange_stops = self.store.get("exchange_stops") or {}
         for coin, pos in list(self.positions.items()):
             p = self.prices.get(coin)
@@ -284,6 +297,20 @@ class Engine:
             if stop_hit(p, pos.get("stop"), pos["qty"]):
                 moved = "fell to or below" if pos["qty"] > 0 else "rose to or above"
                 self._close(coin, now, f"Stop hit: {coin} {fmt_px(p)} {moved} stop {fmt_px(pos['stop'])}.")
+
+        if self.g.manage_trades:
+            for coin in list(self.positions):
+                try:
+                    self._manage(coin, now)
+                except Exception as exc:  # e.g. the exchange rejects an order: the exchange stop still protects it
+                    warned = self.store.get("manage_warned") or {}
+                    if now - warned.get(coin, 0) >= 3600:
+                        warned[coin] = now
+                        self.store.set("manage_warned", warned)
+                        self.store.log(f"Trade management for {coin} couldn't act ({exc}). Its stop is still in place; I'll keep trying.",
+                                       level="warning", ts=now)
+                    if not self.live:
+                        raise
 
         candles = self.market.candles(self.s.bot.interval_minutes)
         decisions = self.brain.decide(self, candles, price, now)
@@ -315,6 +342,8 @@ class Engine:
                     self.store.log("Guardrail: trade limit reached, a partial close isn't allowed. Full exits always are.", level="warning", ts=now)
                     return
                 self._close(coin, now, d.reason, d.sell_fraction)
+        elif d.action == "target" and pos:
+            self._set_target(coin, d.target, now)
         elif d.stop is not None and pos:
             self._move_stop(coin, d.stop, now)
 
@@ -392,17 +421,21 @@ class Engine:
         else:
             # Risk is what this coin's whole position would lose if its stop is hit
             held_risk = abs(pos["qty"]) * abs(price - new_stop) if pos else 0.0
-            risk_cap = max(equity * g.max_risk_per_trade - held_risk, 0) / distance
+            allowed = equity * g.max_risk_per_trade
+            if g.max_total_risk:  # and every open trade together can't risk more than the portfolio cap
+                allowed = min(allowed, equity * g.max_total_risk - self.open_risk(exclude=coin))
+            risk_cap = max(allowed - held_risk, 0) / distance
             # No leverage: total exposure across every position can't exceed equity
             room = equity * g.max_leverage * self.s.strategy.max_position_pct - self.exposure() - gas
             notional = min(d.size_usd, risk_cap, room)
             if notional < d.size_usd - 0.01:
                 self.store.log(f"Guardrail: {coin} trade trimmed from {d.size_usd:.2f} to {max(notional, 0):.2f} USDC "
-                               f"to keep the risk under {g.max_risk_per_trade:.0%} of equity with no leverage.", ts=now)
+                               f"to keep the risk under {g.max_risk_per_trade:.0%} of equity per trade"
+                               + (f" and {g.max_total_risk:.0%} across all open trades" if g.max_total_risk else "") + ", with no leverage.", ts=now)
         if notional < self.s.strategy.min_trade_usd:
             self.store.log(f"{d.reason} But the {coin} trade would be too small, so skipping.", ts=now)
             return
-        self._open(coin, side, notional, price, new_stop, now, d.reason, d.setup)
+        self._open(coin, side, notional, price, new_stop, now, d.reason, d.setup, d.target)
 
     def _move_stop(self, coin: str, new: float, now: int) -> None:
         pos = self.position(coin)
@@ -417,6 +450,69 @@ class Engine:
             pos["stop"] = new
             self._save_position(coin, pos)
             self._sync_stop(coin, now)
+
+    # Trade management: what a professional sets up the moment a trade is on
+    def _manage(self, coin: str, now: int) -> None:
+        pos, p = self.position(coin), self.prices.get(coin)
+        if not pos or p is None:
+            return
+        long = pos["qty"] > 0
+        d = 1 if long else -1
+        if not pos.get("risk_unit"):  # a position from before trade management: measure from here
+            if not pos.get("stop"):
+                return
+            entry = abs(pos["cost_basis"] / pos["qty"])
+            pos.update(entry_px=entry, risk_unit=abs(entry - pos["stop"]), best=p, worst=p, managed_since=now)
+            pos.setdefault("target", entry + d * self.g.target_r * pos["risk_unit"])
+        entry, unit = pos["entry_px"], pos["risk_unit"]
+        gain = d * (p - entry) / unit if unit else 0.0
+
+        if not pos.get("be_done") and gain >= 1:
+            pos["be_done"] = True
+            self._save_position(coin, pos)
+            if pos.get("stop") is None or d * (entry - pos["stop"]) > 0:
+                self._move_stop(coin, entry, now)
+                self.store.log(f"{coin} is up {gain:.1f}R, so I moved its stop to breakeven ({fmt_px(entry)}). Worst case now is about the fees.", ts=now)
+        target = pos.get("target")
+        if target and not pos.get("half_taken") and d * (p - target) >= 0:
+            pos["half_taken"] = True
+            self._save_position(coin, pos)
+            self._close(coin, now, f"Take profit: {coin} reached its target {fmt_px(target)} (+{gain:.1f}R). Banking half and trailing the rest.", 0.5)
+            pos = self.position(coin)
+            if not pos:
+                return
+        if pos.get("half_taken"):
+            trail = pos["best"] - d * unit
+            if pos.get("stop") is None or d * (trail - pos["stop"]) >= 0.25 * unit:
+                self._move_stop(coin, trail, now)
+        if not pos.get("be_done") and now - (pos.get("managed_since") or now) >= self.g.time_stop_hours * 3600:
+            self._close(coin, now, f"Time stop: {coin} hasn't reached +1R in {self.g.time_stop_hours / 24:.0f} days ({gain:+.1f}R now). "
+                                   "Freeing the money for something that's working.")
+
+    def _track(self, coin: str) -> None:
+        """Best and worst price since entry, for trailing stops and the movement stats."""
+        pos, p = self.position(coin), self.prices.get(coin)
+        if not pos or p is None or pos.get("entry_px") is None:
+            return
+        d = 1 if pos["qty"] > 0 else -1
+        changed = False
+        if d * (p - pos.get("best", pos["entry_px"])) > 0:
+            pos["best"], changed = p, True
+        if d * (pos.get("worst", pos["entry_px"]) - p) > 0:
+            pos["worst"], changed = p, True
+        if changed:
+            self._save_position(coin, pos)
+
+    def _set_target(self, coin: str, target: float | None, now: int) -> None:
+        pos, p = self.position(coin), self.prices.get(coin)
+        d = 1 if pos["qty"] > 0 else -1
+        if target is not None and p is not None and d * (target - p) <= 0:
+            self.store.log(f"Guardrail: {coin} target {fmt_px(target)} is on the wrong side of the price, ignored.", level="warning", ts=now)
+            return
+        pos["target"] = target
+        pos["managed_since"] = now  # a fresh plan restarts the time stop
+        self._save_position(coin, pos)
+        self.store.log(f"{coin} take-profit " + (f"set to {fmt_px(target)}." if target else "removed: letting it run on the stop."), ts=now)
 
     # Survival bookkeeping
     def _pay_running_costs(self, now: int) -> None:
@@ -524,16 +620,27 @@ class Engine:
         self.store.set("cash", equity - sum(p["qty"] * self.prices.get(c, 0) for c, p in positions.items()))
 
     # Trading
-    def _open(self, coin: str, side: int, notional: float, price: float, stop: float, now: int, reason: str, setup: str | None = None) -> None:
+    def _open(self, coin: str, side: int, notional: float, price: float, stop: float, now: int, reason: str,
+              setup: str | None = None, target: float | None = None) -> None:
         self._ensure_leverage(coin, now)
         fill = self.broker.buy(notional, price, coin=coin) if side > 0 else self.broker.sell(notional / price, price, coin=coin)
         pos = self.position(coin)
         adding = pos is not None
         pos = pos or {"qty": 0.0, "cost_basis": 0.0, "opened_at": now, "setup": setup}
+        if adding and pos.get("entry_px"):  # average entry across the adds
+            held = abs(pos["qty"])
+            pos["entry_px"] = (pos["entry_px"] * held + fill.price * fill.qty) / (held + fill.qty)
         pos["qty"] += side * fill.qty
         pos["cost_basis"] -= fill.cash_delta
         pos["stop"] = stop
         pos["risk_usd"] = (pos.get("risk_usd") or 0.0) + fill.qty * abs(fill.price - stop)  # so results can be measured in R
+        if not adding:  # what trade management and the movement stats measure from
+            pos.update(entry_px=fill.price, risk_unit=abs(fill.price - stop), best=fill.price, worst=fill.price, managed_since=now)
+            if self.g.manage_trades:
+                default = fill.price + side * self.g.target_r * abs(fill.price - stop)
+                pos["target"] = target if target and (target - fill.price) * side > 0 else default
+        elif target and (target - fill.price) * side > 0:
+            pos["target"] = target
         self.store.set("cash", self.cash + fill.cash_delta)
         self._save_position(coin, pos)
         self.store.add_trade(now, fill, None, self.market.usd_to_aud(), reason, coin=coin)
@@ -622,7 +729,10 @@ class Engine:
             positions.append({"coin": coin, "side": "long" if p["qty"] > 0 else "short", "qty": p["qty"],
                               "entry": abs(p["cost_basis"] / p["qty"]) if p["qty"] else None, "price": px,
                               "cost_basis": p["cost_basis"], "stop": p.get("stop"), "setup": p.get("setup"),
-                              "value": abs(p["qty"]) * px if px else None, "unrealised": unreal})
+                              "value": abs(p["qty"]) * px if px else None, "unrealised": unreal, "target": p.get("target"),
+                              "r_now": (px - p["entry_px"]) / p["risk_unit"] * (1 if p["qty"] > 0 else -1)
+                              if px and p.get("risk_unit") and p.get("entry_px") else None,
+                              "stage": "trailing" if p.get("half_taken") else "breakeven" if p.get("be_done") else None})
         return {
             "bot": self.brain.name,
             "label": self.brain.label,
@@ -653,6 +763,8 @@ class Engine:
             "positions": positions,
             "exposure": self.exposure() if self.prices else 0.0,
             "max_positions": self.g.max_positions,
+            "open_risk": self.open_risk() if self.prices else None,
+            "max_total_risk": self.g.max_total_risk,
             "min_volume_usd": self.g.min_volume_usd,
             "probation": bool(self.store.get("probation")),
             "started_at": self.store.get("started_at"),

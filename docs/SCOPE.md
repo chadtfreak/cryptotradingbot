@@ -113,6 +113,14 @@ Real trades come slowly, so a month of trading only teaches a handful of lessons
 
 **Funding harvest: not possible yet.** Collecting funding without taking a side needs the spot coin as well as the perp. Hyperliquid's spot markets for BTC, ETH, SOL and HYPE have almost no trading, on mainnet and testnet, and other exchanges need ID. Revisit if those markets come alive.
 
+## Trading like a professional (version 1.12)
+
+- **Trade management.** Every trade gets a take-profit (default twice the amount risked, or Claude's own). Once a trade is up by its risk, the stop moves to breakeven. At the target half is banked and the rest trails one risk-unit behind the best price. A trade that hasn't reached +1R in 5 days is closed. This is what the backtests assumed, so live trading now matches the tested setups. Stops stay on the exchange; targets and trailing are run by the bot every minute.
+- **Risk limits.** At most 2% of equity at risk per trade and 10% across all open trades (loss from entry if every stop is hit), replacing full send's 25% per trade. Claude also sees its net long or short, how much its positions behave like one BTC bet, and its open risk.
+- **Research matched to now.** The scanner flags any backtested setup firing on each coin, and Claude sees how that setup did over 7 years in the same conditions (BTC trend, the coin's trend, funding, volatility).
+- **Trade movement.** Every trade records how far it went for and against before closing, so Claude can tell whether its stops are too tight or it gives back too much.
+- **Outside the charts.** Scheduled US economic news (Claude is woken 45 minutes before and just after big releases), open interest change over 24 hours (tracked by the bot from hourly snapshots), and BTC's share of the crypto market. Liquidation and token unlock data need paid feeds, so they aren't included.
+
 ## Stages
 
 ### Stage 1: paper trading (built, Claude added in version 1.1)

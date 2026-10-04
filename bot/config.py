@@ -59,6 +59,10 @@ class GuardrailSettings:
     max_positions: int = 1  # positions held at once, one per coin
     min_volume_usd: float = 0.0  # coins other than the primary need this much 24h volume (0 = primary only)
     stops_only_up: bool = True
+    max_total_risk: float = 0.0  # max loss across every open trade if all stops are hit, vs entry (0 = no cap)
+    manage_trades: bool = False  # automatic take-profit, breakeven, trailing and time stops
+    target_r: float = 2.0  # default take-profit, in multiples of the amount risked
+    time_stop_hours: float = 120.0  # close a trade that hasn't reached +1R in this long
 
 
 @dataclass
@@ -78,6 +82,7 @@ class ClaudeSettings:
     allow_mainnet: bool = False  # real money stays locked until the testnet run has proved itself
     learning_phase_budget_usd: float = 0.0  # owner-funded thinking for a learning phase (0 = none)
     learning_phase_days: int = 30
+    macro_feeds: bool = False  # US economic calendar and BTC dominance from free public feeds
 
 
 @dataclass

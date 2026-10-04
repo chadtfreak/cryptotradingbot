@@ -25,9 +25,13 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Claude can now hold up to 10 positions at once (was 5), and sees the top 12
-  coins from the scanner (was 8). Total size is still capped at its bankroll,
-  with no leverage. Version 1.10 added bankroll top-ups.
+  Claude now trades like a professional. Every trade gets a take-profit, moves
+  to breakeven once up by its risk, banks half at the target and trails the
+  rest, and closes if it goes nowhere for 5 days. Risk is capped at 2% per
+  trade and 10% across all trades. Claude sees which backtested setups are
+  firing and how they did in similar conditions, how far its trades moved before
+  closing, open interest changes, BTC's market share and upcoming US economic
+  news, which also wakes it around big releases.
 dependencies: []
 path: ""
 defaultUsername: ""

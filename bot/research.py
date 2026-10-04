@@ -14,6 +14,9 @@ from pathlib import Path
 from .indicators import atr, ema, rsi
 
 OUT = Path(__file__).parent / "knowledge" / "setup_stats.md"
+REGIMES = Path(__file__).parent / "knowledge" / "setup_regimes.json"
+DIMENSIONS = {"btc": ["BTC up", "BTC down"], "trend": ["trending", "choppy"],
+              "funding": ["longs crowded", "normal", "shorts crowded"], "vol": ["high vol", "low vol"]}
 FEE_ROUND_TRIP = 0.0009 + 0.0004  # taker fees both ways plus a little slippage
 MAX_HOLD = 30  # 4h candles: 5 days
 RANGE = 120  # 20 days of 4h candles
@@ -110,9 +113,23 @@ def stats(rs: list[float]) -> dict:
             "avg_loss": sum(x for x in rs if x <= 0) / max(n - len(wins), 1)}
 
 
+def regime(btc_up: bool | None, trend_atr: float, funding: float | None, vol_pct: float, median_vol: float) -> dict:
+    """The market mood a trade happens in. Used the same way on history and live."""
+    return {
+        "btc": None if btc_up is None else ("BTC up" if btc_up else "BTC down"),
+        "trend": "trending" if trend_atr >= 1 else "choppy",
+        "funding": None if funding is None else ("longs crowded" if funding > 30 else "shorts crowded" if funding < 0 else "normal"),
+        "vol": "high vol" if vol_pct > median_vol else "low vol",
+    }
+
+
 def run_long(data: dict) -> str:
     """The same setups on years of Binance history, split by market mood, so Claude knows not
     just whether a setup works but when."""
+    return report(collect(data), len(data))
+
+
+def collect(data: dict) -> list:
     from .history import _funding_lookup, indicators
 
     btc = indicators(data["BTC"]["candles"])
@@ -129,13 +146,30 @@ def run_long(data: dict) -> str:
             j = btc_pos.get(candles[i].ts)
             fr = fund(candles[i].ts) if fund else None
             trend_atr = abs(ind["ema20"][i] / ind["ema50"][i] - 1) * 100 / (a / c * 100)
-            reg = {
-                "btc": ("BTC up" if btc["ema20"][j] > btc["ema50"][j] else "BTC down") if j is not None and btc["ema50"][j] else None,
-                "trend": "trending" if trend_atr >= 1 else "choppy",
-                "funding": None if fr is None else ("longs crowded" if fr > 30 else "shorts crowded" if fr < 0 else "normal"),
-                "vol": "high vol" if a / c * 100 > median_vol else "low vol",
-            }
-            rows.append((setup, direction, res, reg, candles[i].ts))
+            btc_up = btc["ema20"][j] > btc["ema50"][j] if j is not None and btc["ema50"][j] else None
+            rows.append((setup, direction, res, regime(btc_up, trend_atr, fr, a / c * 100, median_vol), candles[i].ts))
+    return rows
+
+
+def cells(rows: list) -> dict:
+    """Expectancy by setup, side and market mood, for matching live conditions: {"breakout|1|btc|BTC up": [trades, R]}."""
+    out = {}
+    for setup in {r[0] for r in rows}:
+        for d in (1, -1):
+            mine = [r for r in rows if r[0] == setup and r[1] == d]
+            if not mine:
+                continue
+            t = stats([r[2] for r in mine])
+            out[f"{setup}|{d}"] = [t["n"], round(t["exp"], 3)]
+            for key, values in DIMENSIONS.items():
+                for v in values:
+                    t = stats([r[2] for r in mine if r[3][key] == v])
+                    if t["n"]:
+                        out[f"{setup}|{d}|{key}|{v}"] = [t["n"], round(t["exp"], 3)]
+    return out
+
+
+def report(rows: list, n_coins: int) -> str:
 
     first = datetime.fromtimestamp(min(r[4] for r in rows), timezone.utc).strftime("%b %Y")
     last = datetime.fromtimestamp(max(r[4] for r in rows), timezone.utc).strftime("%b %Y")
@@ -143,7 +177,7 @@ def run_long(data: dict) -> str:
     fmt = lambda x: f"{x['exp']:+.2f}R ({x['n']})" if x["n"] >= 15 else (f"{x['exp']:+.2f}R ({x['n']}, too few)" if x["n"] else "none")
     by = lambda pred: [r[2] for r in rows if pred(r)]
     setups = sorted({r[0] for r in rows}, key=lambda k: -stats(by(lambda r: r[0] == k))["exp"])
-    lines = [f"Backtest of the playbook setups on {len(data)} major coins, Binance 4h candles, {first} to {last}, through bull, bear and choppy markets. "
+    lines = [f"Backtest of the playbook setups on {n_coins} major coins, Binance 4h candles, {first} to {last}, through bull, bear and choppy markets. "
              "R = multiples of the amount risked, after fees, 1.5 ATR stop and 2 to 3 ATR target. Expectancy is the average R per trade: "
              "above about +0.1 is a real edge, below 0 loses money. Numbers in brackets are trade counts. These are mechanical versions "
              "of each setup and base rates, not promises; where a setup only works in one kind of market, trade it only there. "

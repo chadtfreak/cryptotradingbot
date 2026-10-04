@@ -45,9 +45,9 @@ max_positions = 1
 min_volume_usd = 0               # ETH only
 
 [claude_guardrails]
-# Claude's hard limits: "full send". Only the $50 survival floor and the thinking budget really hold it back.
+# Claude's hard limits: "full send" freedom (any liquid coin, long or short, no trade limits) with professional risk limits.
 style = "full send"
-max_risk_per_trade = 0.25        # can risk up to 25% of equity on one trade
+max_risk_per_trade = 0.02        # risk at most 2% of equity on one trade, like a professional
 min_stop_distance_pct = 0.5      # every buy still needs a stop, anywhere 0.5% to 50% below price
 max_stop_distance_pct = 50.0
 max_trades_per_day = 0           # no limit
@@ -58,6 +58,10 @@ allow_short = true               # can bet on ETH falling
 max_leverage = 1.0               # never more exposure than its equity. Hard-coded safety, keep at 1.
 max_positions = 10               # up to 10 coins at once
 min_volume_usd = 20000000        # any Hyperliquid coin with $20M+ daily volume
+max_total_risk = 0.10            # at most 10% of equity lost if every open stop is hit (measured from entry)
+manage_trades = true             # take-profit, breakeven, trailing and time stops run automatically
+target_r = 2.0                   # default take-profit: twice the amount risked (Claude can set its own)
+time_stop_hours = 120            # close a trade that hasn't reached +1R in 5 days
 
 [claude]
 enabled = true
@@ -75,3 +79,4 @@ web_searches_per_wake = 2        # news searches allowed per check, when budget 
 allow_mainnet = false            # real-money Hyperliquid stays locked until the testnet run has proved itself
 learning_phase_budget_usd = 40.0 # a one-off learning phase: thinking paid by the owner, not Claude's balance, smartest model throughout
 learning_phase_days = 30         # it starts on first run and ends after this many days or when the budget is used
+macro_feeds = true               # US economic calendar (wakes Claude around big releases) and BTC dominance, from free feeds
