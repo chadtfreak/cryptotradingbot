@@ -153,6 +153,41 @@ class Engine:
         """Money put in: the starting balance plus any promotions."""
         return self.store.ledger_total("deposit") or self.s.bot.starting_balance
 
+    @property
+    def bankroll_base(self) -> float:
+        """The bankroll the owner set: the starting balance plus top-ups, not counting promotions."""
+        return self.store.get("bankroll_base") or self.s.bot.starting_balance
+
+    @property
+    def floor(self) -> float:
+        """The survival floor. It scales with the bankroll the owner sets (half of it by default)."""
+        return self.store.get("floor_usd") or self.s.survival.floor_usd
+
+    def available_to_add(self) -> float | None:
+        """On a live venue, how much of the exchange account isn't already part of the bankroll."""
+        value = self.store.get("account_value")
+        if not self.live or value is None or not self.prices:
+            return None
+        return max(value - self.equity(), 0.0)
+
+    def top_up(self, now: int, amount: float) -> None:
+        """The owner adds to the bankroll. The floor moves with it, so the survival rule stays the same."""
+        if amount <= 0:
+            raise ValueError("Choose an amount above zero.")
+        if self.live:
+            if (self.store.get("venue") or {}).get("name") == "mainnet":
+                raise ValueError("On real money, top-ups aren't supported from the dashboard yet.")
+            room = self.available_to_add()
+            if room is None or amount > room + 0.01:
+                raise ValueError(f"The exchange account only has {room or 0:,.2f} USDC that isn't already in the bankroll.")
+        ratio = self.s.survival.floor_usd / self.s.bot.starting_balance
+        base = self.bankroll_base + amount
+        self.deposit(now, amount, "Owner top-up")
+        self.store.set("bankroll_base", base)
+        self.store.set("floor_usd", round(base * ratio, 2))
+        self.store.log(f"My owner added {amount:,.2f} USDC to my bankroll, now {base:,.2f}. "
+                       f"My survival floor moves to {base * ratio:,.2f}.", level="trade", ts=now)
+
     def exposure(self, prices: dict | None = None) -> float:
         prices = prices or self.prices
         return sum(abs(p["qty"]) * prices.get(c, 0) for c, p in self.positions.items())
@@ -223,8 +258,8 @@ class Engine:
         self._roll_day(now, equity)
         self.store.add_equity(now - now % EQUITY_BUCKET, equity, self.cash, self.qty, price)
 
-        if equity < self.s.survival.floor_usd:
-            self._close_all(now, f"Equity {equity:.2f} fell below the survival floor of {self.s.survival.floor_usd:.2f}. Selling up.")
+        if equity < self.floor:
+            self._close_all(now, f"Equity {equity:.2f} fell below the survival floor of {self.floor:.2f}. Selling up.")
             self.store.set("status", DEAD)
             self.store.log("I've run out of life. Trading has stopped for good. "
                            "Run `python -m bot reset` to start a new life.", level="critical", ts=now)
@@ -451,6 +486,7 @@ class Engine:
         Equity is the money put in plus whatever the exchange account has gained or lost
         since the bot went live, minus the hosting and thinking it owes."""
         st = self.broker.venue.state()
+        self.store.set("account_value", st.account_value)
         live_positions = {c: (q, e) for c, (q, e) in st.positions.items() if abs(q) * self.prices.get(c, e or 0) >= 1.0}
         for coin in live_positions:
             self._ensure_leverage(coin, now)
@@ -575,7 +611,7 @@ class Engine:
         funding = -self.store.ledger_total("funding")
         realised = sum(t["pnl"] or 0 for t in self.store.trades(100000))
         burn = self.daily_burn()
-        runway = (equity - self.s.survival.floor_usd) / burn if equity is not None and burn > 0 else None
+        runway = (equity - self.floor) / burn if equity is not None and burn > 0 else None
         start_price = self.store.get("start_price")
         positions = []
         unrealised_total = 0.0
@@ -608,7 +644,9 @@ class Engine:
             "funding_paid": funding,
             "monthly_cost": self.s.survival.monthly_running_cost_usd,
             "daily_burn": burn,
-            "floor": self.s.survival.floor_usd,
+            "floor": self.floor,
+            "bankroll_base": self.bankroll_base,
+            "available_to_add": self.available_to_add(),
             "runway_days": max(runway, 0) if runway is not None else None,
             "buy_hold_pct": (price / start_price - 1) * 100 if price and start_price else None,
             "funding_rate": self.market.last_funding if hasattr(self.market, "last_funding") else None,

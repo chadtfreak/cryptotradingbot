@@ -292,7 +292,7 @@ def test_promotion_offer_and_approval_adds_bankroll():
     assert offer and offer["name"] == LEVELS[1][0]
     before = eng.contributed
     c.approve(eng, now)
-    assert eng.contributed == before + LEVELS[1][1]
+    assert eng.contributed == before + LEVELS[1][1] * eng.bankroll_base
     assert eng.store.get("career_level") == 1 and eng.store.get("promotion_offer") is None
 
 

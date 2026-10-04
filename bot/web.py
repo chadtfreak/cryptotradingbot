@@ -154,6 +154,24 @@ def create_app(engines: "dict[str, Engine] | Engine", run_loop: bool = True) -> 
             raise HTTPException(400, str(exc))
         return engine.summary()
 
+    @app.post("/api/claude/bankroll")
+    async def bankroll(body: dict = Body(...)):
+        """Add to Claude's bankroll: an amount, or {"full": true} for everything spare in the exchange account."""
+        engine = get("claude")
+        now = int(engine.clock())
+
+        def add():
+            with engine.lock:
+                amount = engine.available_to_add() if body.get("full") else float(body.get("amount") or 0)
+                if amount is None:
+                    raise ValueError("Give an amount to add.")
+                engine.top_up(now, round(amount - 0.005, 2) if body.get("full") else amount)
+        try:
+            await asyncio.to_thread(add)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc))
+        return engine.summary()
+
     @app.post("/api/claude/practice")
     async def practice(body: dict = Body(...)):
         from .practice import PracticeRun

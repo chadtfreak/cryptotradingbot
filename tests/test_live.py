@@ -285,3 +285,43 @@ def test_book_problem_reads_the_order_book():
     assert v.book_problem("PUMP", 0.006285) is None
     assert "away from the real market" in v.book_problem("PUMP", 0.0055)
     assert "isn't listed" in v.book_problem("ZEC")
+
+
+# Bankroll top-ups
+
+def test_top_up_uses_the_whole_testnet_account_and_moves_the_floor():
+    from fastapi.testclient import TestClient
+    from bot.web import create_app
+    eng, venue, clock = make_live([tool_reply("submit_decision", decision("hold"))])
+    eng.tick()
+    assert eng.bankroll_base == 100 and eng.floor == 50
+    room = eng.available_to_add()
+    assert 899 < room <= 901  # a little over 900: thinking costs come off equity, not the account
+    client = TestClient(create_app({"claude": eng}, run_loop=False))
+    assert client.post("/api/claude/bankroll", json={"amount": 5000}).status_code == 400
+    s = client.post("/api/claude/bankroll", json={"full": True}).json()
+    assert s["bankroll_base"] == pytest.approx(100 + room, abs=0.02) and s["floor"] == pytest.approx(s["bankroll_base"] / 2, abs=0.01)
+    clock.t += 60
+    eng.tick()
+    assert eng.equity() == pytest.approx(venue.state().account_value, abs=0.05)
+    assert eng.available_to_add() < 0.05
+
+
+def test_paper_top_up_and_promotion_scale_with_bankroll():
+    from bot.career import Career
+    eng, *_ = make_live([tool_reply("submit_decision", decision("hold"))])
+    eng.live = False  # behave like paper for this check
+    eng.store.set("account_value", None)
+    eng.top_up(eng.clock(), 900)
+    assert eng.contributed == 1000 and eng.floor == 500
+    c = Career(15.0)
+    assert c.summary(eng.store, eng.clock(), eng.bankroll_base)["next_amount"] == 1000
+
+
+def test_testnet_promotion_needs_spare_test_money():
+    eng, venue, clock = make_live([tool_reply("submit_decision", decision("hold"))])
+    eng.tick()
+    eng.top_up(clock.t, eng.available_to_add() - 0.01)
+    eng.store.set("promotion_offer", {"level": 1, "name": "Trader", "amount": 1000.0, "since": 1, "stats": {}})
+    with pytest.raises(ValueError, match="test USDC"):
+        eng.brain.career.approve(eng, clock.t)

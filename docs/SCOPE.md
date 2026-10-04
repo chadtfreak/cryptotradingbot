@@ -109,6 +109,10 @@ Real trades come slowly, so a month of trading only teaches a handful of lessons
 
 **What didn't work: a "similar moments" lookup (October 2026).** We tried finding the 50 most similar past moments in 340,000 candles of history and telling Claude what happened next. Tested honestly (only pre 2025 history, predicting 2025 to 2026), it called the direction right 50% of the time, a coin flip, so it isn't used. Short-term crypto direction is close to random; the edge, where there is one, is in picking the right setup for the market and managing risk.
 
+**Bigger bankroll (October 2026).** At $100, Claude's costs (about $16 a month for thinking and hosting) meant it had to make 16% a month just to stay level. The owner can now add to its bankroll from the dashboard, up to whatever is spare in the exchange account. On testnet that's the full $1000. The survival floor moves with it (half the bankroll the owner set), and promotions add 1, 2 and 4 times that bankroll. On testnet a promotion needs that much spare test money in the account. Top-ups and automatic promotion money stay off for real money.
+
+**Funding harvest: not possible yet.** Collecting funding without taking a side needs the spot coin as well as the perp. Hyperliquid's spot markets for BTC, ETH, SOL and HYPE have almost no trading, on mainnet and testnet, and other exchanges need ID. Revisit if those markets come alive.
+
 ## Stages
 
 ### Stage 1: paper trading (built, Claude added in version 1.1)

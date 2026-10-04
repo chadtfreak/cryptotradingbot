@@ -163,6 +163,13 @@
     <div class="venue">
       <div class="label"><strong>Where Claude trades</strong> <span id="venuepill" class="pill paper">paper</span> <a href="#" id="venuechange" class="sub">Change</a></div>
       <div class="sub" id="venueinfo"></div>
+      <div class="sub" id="bankrollinfo" style="margin-top:6px"></div>
+      <div class="keyform" id="bankrollform">
+        <input id="bankrollamt" type="number" min="1" step="1" placeholder="Amount (USDC)" aria-label="Amount to add to Claude's bankroll" style="max-width:180px">
+        <button id="bankrolladd">Add to bankroll</button>
+        <button id="bankrollfull" class="hidden">Use the whole account</button>
+      </div>
+      <div class="msg" id="bankrollmsg"></div>
       <div id="venueform" class="hidden">
         <div class="venue-opts">
           <label><input type="radio" name="venue" value="paper"> Paper trading (pretend money)</label>
@@ -276,7 +283,9 @@ function renderRace() {
     <div class="pct ${r.pct > 0 ? "good" : r.pct < 0 ? "bad" : ""}">${pct(r.pct)}</div></div>`).join("");
 }
 
+let lastStatus = null;
 function renderStatus(s) {
+  lastStatus = s;
   $("mode").textContent = s.mode;
   $("status").textContent = s.status;
   $("status").className = "pill " + s.status;
@@ -370,6 +379,12 @@ function renderBrain(b) {
   $("venueinfo").textContent = v === "paper" ? "Pretend money at live prices, with Hyperliquid's fees and funding."
     : `Real orders on Hyperliquid ${v === "testnet" ? "testnet with free test money" : "with real money"}, account ${b.venue_account || ""}. Stops are placed on the exchange.`;
   $("mainnetopt").classList.toggle("hidden", !b.allow_mainnet);
+  const room = lastStatus && lastStatus.available_to_add;
+  $("bankrollinfo").textContent = lastStatus ? `Bankroll ${usd(lastStatus.bankroll_base)} USDC, survival floor ${usd(lastStatus.floor)}.`
+    + (room != null ? ` The exchange account has ${usd(room)} more you can add.` : "") : "";
+  $("bankrollform").classList.toggle("hidden", v === "mainnet");
+  $("bankrollfull").classList.toggle("hidden", !(room > 1));
+  if (room > 1) $("bankrollfull").textContent = `Add all ${usd(room)}`;
   $("lessons-meta").textContent = b.lessons_updated ? `Last rewritten in its weekly review, ${when(b.lessons_updated)}` : "Claude reviews its own decisions once a week and writes its lessons here.";
   $("lessons").textContent = b.lessons || "";
   renderCareer(b.career);
@@ -411,15 +426,15 @@ function renderCareer(c) {
   $("probation").title = "Two losing months in a row: half risk per trade and one position at a time until a winning month.";
   $("allowance").textContent = `$${c.allowance.amount.toFixed(2)}${c.allowance.smart ? "" : ", cheaper model only"}`;
   $("allowance-why").textContent = c.allowance.why;
-  $("nextlevel").textContent = c.next_level ? `${c.next_level} (+$${c.next_amount} bankroll)` : "Top of the ladder";
+  $("nextlevel").textContent = c.next_level ? `${c.next_level} (+$${Math.round(c.next_amount).toLocaleString()} bankroll)` : "Top of the ladder";
   const o = c.offer;
   $("offer").classList.toggle("hidden", !o);
   if (o) {
     const st = o.stats || {};
     $("offer").innerHTML = `<strong>Claude has earned a promotion to ${esc(o.name)}.</strong>
       <div class="sub">${pct(st.return)} over 30 days (maths bot ${pct(st.maths)}, holding ETH ${pct(st.hold)}) across ${st.trades ?? "-"} closed trades.
-      Approving adds $${o.amount} to its bankroll.</div>
-      <div class="row"><button class="go" id="promo-yes">Approve +$${o.amount}</button><button id="promo-no">Not yet</button></div>
+      Approving adds $${Math.round(o.amount).toLocaleString()} to its bankroll.</div>
+      <div class="row"><button class="go" id="promo-yes">Approve +$${Math.round(o.amount).toLocaleString()}</button><button id="promo-no">Not yet</button></div>
       <div class="msg" id="promo-msg"></div>`;
     $("promo-yes").onclick = () => promotion(true);
     $("promo-no").onclick = () => promotion(false);
@@ -554,6 +569,24 @@ $("practice-go").onclick = async () => {
     $("practice-msg").className = "msg bad";
   }
 };
+async function addBankroll(body, label) {
+  if (!confirm(`${label} Claude's survival floor moves up with it (half the bankroll).`)) return;
+  try {
+    renderStatus(await api("api/claude/bankroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+    $("bankrollamt").value = "";
+    $("bankrollmsg").textContent = "";
+    refresh();
+  } catch (e) {
+    $("bankrollmsg").textContent = e.message;
+    $("bankrollmsg").className = "msg bad";
+  }
+}
+$("bankrolladd").onclick = () => {
+  const amount = parseFloat($("bankrollamt").value);
+  if (!(amount > 0)) { $("bankrollmsg").textContent = "Enter an amount first."; return; }
+  addBankroll({ amount }, `Add ${usd(amount)} USDC to Claude's bankroll?`);
+};
+$("bankrollfull").onclick = () => addBankroll({ full: true }, "Add everything spare in the exchange account to Claude's bankroll?");
 $("keychange").onclick = (e) => { e.preventDefault(); showKeyForm = true; refresh(); };
 $("keysave").onclick = async () => {
   const key = $("keyinput").value.trim();

@@ -25,10 +25,11 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Before buying or shorting on Hyperliquid, the bot now checks the coin's order
-  book. On testnet some smaller coins (like PUMP) have big gaps between buyers
-  and sellers, so orders never filled. It now skips those, says why, and tells
-  Claude not to waste checks retrying them.
+  You can now add to Claude's bankroll from the dashboard (under "Where Claude
+  trades"), up to everything spare in the testnet account. Its survival floor
+  moves with it, staying at half the bankroll, and promotions scale too: 1, 2
+  and 4 times its bankroll. Version 1.9.1 skips coins whose testnet order book
+  is too thin to trade, like PUMP.
 dependencies: []
 path: ""
 defaultUsername: ""

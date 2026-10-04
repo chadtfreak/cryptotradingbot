@@ -10,7 +10,7 @@ half the risk per trade and one position at a time, until it has a winning month
 
 from datetime import datetime, timezone
 
-LEVELS = [("Rookie", 0), ("Trader", 100), ("Senior trader", 200), ("Partner", 400)]  # name, amount added on promotion
+LEVELS = [("Rookie", 0), ("Trader", 1), ("Senior trader", 2), ("Partner", 4)]  # name, bankrolls added on promotion
 PROMOTION_DAYS = 30
 PROMOTION_RETURN = 10.0  # percent over the window
 PROMOTION_MIN_TRADES = 5
@@ -115,7 +115,8 @@ class Career:
         rival_ret = window_return(rival.store, start, now + 1)[0] if rival is not None else None
         closed = sum(1 for t in st.trades(1000) if t["ts"] >= start and t["pnl"] is not None)
         if ret >= PROMOTION_RETURN and (rival_ret is None or ret > rival_ret) and (hold is None or ret > hold) and closed >= PROMOTION_MIN_TRADES:
-            name, amount = LEVELS[lvl + 1]
+            name, times = LEVELS[lvl + 1]
+            amount = times * eng.bankroll_base
             st.set("promotion_offer", {"level": lvl + 1, "name": name, "amount": amount, "since": now,
                                        "stats": {"return": ret, "maths": rival_ret, "hold": hold, "trades": closed}})
             st.log(f"I've earned a promotion to {name}: {ret:+.1f}% over 30 days, beating both rivals across {closed} trades. "
@@ -129,6 +130,10 @@ class Career:
         venue = (st.get("venue") or {}).get("name", "paper")
         if venue == "mainnet":
             raise ValueError("On real money, add the funds to the Hyperliquid account yourself; automatic top-ups aren't supported yet.")
+        room = eng.available_to_add()
+        if eng.live and (room is None or room + 0.01 < offer["amount"]):
+            raise ValueError(f"Add {offer['amount'] - (room or 0):,.0f} test USDC to the testnet account first: it only has "
+                             f"{room or 0:,.2f} spare beyond Claude's bankroll.")
         eng.deposit(now, offer["amount"], f"Promotion to {offer['name']}")
         st.set("career_level", offer["level"])
         st.set("promotion_offer", None)
@@ -141,16 +146,16 @@ class Career:
             eng.store.log("My owner declined the promotion for now.", ts=now)
 
     # What Claude and the dashboard see
-    def summary(self, store, now: int) -> dict:
+    def summary(self, store, now: int, base: float = 100.0) -> dict:
         lvl = self.level(store)
         nxt = LEVELS[lvl + 1] if lvl + 1 < len(LEVELS) else None
-        return {"level": LEVELS[lvl][0], "next_level": nxt[0] if nxt else None, "next_amount": nxt[1] if nxt else None,
+        return {"level": LEVELS[lvl][0], "next_level": nxt[0] if nxt else None, "next_amount": nxt[1] * base if nxt else None,
                 "allowance": self.allowance(store, now), "probation": bool(store.get("probation")),
                 "losing_streak": store.get("losing_streak") or 0, "offer": store.get("promotion_offer"),
                 "history": store.get("career_history") or []}
 
-    def context(self, store, rival, now: int) -> str:
-        c = self.summary(store, now)
+    def context(self, store, rival, now: int, base: float = 100.0) -> str:
+        c = self.summary(store, now, base)
         a = c["allowance"]
         lines = [f"- Level: {c['level']}."]
         if c["next_level"]:
@@ -161,7 +166,7 @@ class Career:
             prog = (f"Last {min(days, PROMOTION_DAYS):.0f} days: you {ret:+.1f}%, maths bot "
                     f"{'n/a' if rival_ret is None else f'{rival_ret:+.1f}%'}, holding ETH {'n/a' if hold is None else f'{hold:+.1f}%'}, "
                     f"{closed} closed trades.") if ret is not None else "Not enough history yet."
-            lines.append(f"- Promotion to {c['next_level']} (+${c['next_amount']} bankroll) needs, over 30 days: at least "
+            lines.append(f"- Promotion to {c['next_level']} (+${c['next_amount']:,.0f} bankroll) needs, over 30 days: at least "
                          f"+{PROMOTION_RETURN:.0f}%, beating both the maths bot and holding ETH, and {PROMOTION_MIN_TRADES}+ closed trades. {prog}")
         lines.append(f"- This month's thinking allowance: ${a['amount']:.2f}. {a['why']} Next month's allowance depends on "
                      "beating both rivals this month: beat both for the full allowance and the smart model, one for two thirds, "

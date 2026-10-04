@@ -258,7 +258,7 @@ class ClaudeBrain:
     def tier(self, eng, now: int, price=None) -> dict:
         phase = self.learning(eng, now)
         if phase and phase["active"]:
-            start, floor = eng.contributed, self.s.survival.floor_usd
+            start, floor = eng.contributed, eng.floor
             health = max(0.0, min(1.0, (eng.equity(price) - floor) / max(start - floor, 1e-9)))
             base = {"spent": phase["spent"], "budget": phase["budget"], "health": health, "pace": 0.0, "earned_smart": True,
                     "learning": True}
@@ -269,7 +269,7 @@ class ClaudeBrain:
         budget = min(allowance["amount"], self.c.monthly_budget_usd)
         spent = self.month_spend(eng, now)
         left = budget - spent
-        start, floor = eng.contributed, self.s.survival.floor_usd
+        start, floor = eng.contributed, eng.floor
         health = max(0.0, min(1.0, (eng.equity(price) - floor) / max(start - floor, 1e-9)))
         d = datetime.fromtimestamp(now, timezone.utc)
         days_in_month = (datetime(d.year + d.month // 12, d.month % 12 + 1, 1, tzinfo=timezone.utc)
@@ -432,7 +432,7 @@ class ClaudeBrain:
         return SYSTEM_PROMPT.format(
             max_positions=g.max_positions,
             style=AGGRESSIVE_STYLE if g.style == "full send" else PATIENT_STYLE,
-            rules=rules_text(g, self.s.survival.floor_usd), min_check=f"{self.c.min_check_hours:g}",
+            rules=rules_text(g, eng.floor), min_check=f"{self.c.min_check_hours:g}",
             playbook=knowledge("playbook.md"),
             stats=f"\n# Backtested setup statistics\n{stats}\n" if stats else "",
             practice=f"\n# Lessons from your practice run on historical charts\n{practice}\n" if practice else "")
@@ -490,11 +490,11 @@ class ClaudeBrain:
         lines = [f"## Why you were woken\n{reason}\n", f"Time: {fmt_time(now)}\n"]
 
         burn = eng.daily_burn()
-        runway = (equity - s.survival.floor_usd) / burn if burn > 0 else float("inf")
+        runway = (equity - eng.floor) / burn if burn > 0 else float("inf")
         start_price = st.get("start_price")
         lines.append("## Your state")
         lines.append(f"- Equity {equity:.2f} USDC (put in so far {eng.contributed:.2f}, born {fmt_time(st.get('started_at'))}). "
-                     f"Survival floor {s.survival.floor_usd:.2f}. Health {tier['health']:.0%}.")
+                     f"Survival floor {eng.floor:.2f}. Health {tier['health']:.0%}.")
         lines.append(f"- Cash {eng.cash:.2f} USDC. Exposure {eng.exposure():.2f} USDC of a {equity * eng.g.max_leverage:.2f} limit.")
         if not eng.positions:
             lines.append("- No open positions.")
@@ -520,7 +520,7 @@ class ClaudeBrain:
         lines.append(f"- Trades today: {eng.trades_today(now)}" + (f" of {limit} allowed.\n" if limit else " (no limit).\n"))
 
         lines.append("## Your career")
-        lines.append(self.career.context(st, self.rival, now) + "\n")
+        lines.append(self.career.context(st, self.rival, now, eng.bankroll_base) + "\n")
 
         feats = self.scan(eng, now)
         if feats and eng.g.min_volume_usd:
@@ -685,7 +685,7 @@ class ClaudeBrain:
         if self.rival is not None and self.rival.last_price:
             lines.append(f"The maths bot is at {self.rival.summary()['equity']:.2f}.")
         lines.append(f"You spent ${-st.ledger_total_since('ai_cost', since):.2f} on thinking in this period.")
-        lines.append(self.career.context(st, self.rival, now) + "\n")
+        lines.append(self.career.context(st, self.rival, now, eng.bankroll_base) + "\n")
         lines.append("## Your scorecard (trades by setup, shadow calls, lessons from each closed trade)")
         lines.append(learning.scorecard(st) + "\n")
         lines.append("## Your decisions (oldest first)")
@@ -746,7 +746,7 @@ class ClaudeBrain:
             "practice_lessons": eng.store.get("practice_lessons"),
             "last_decision": last[0] if last else None,
             "decisions": eng.store.decisions(20),
-            "career": self.career.summary(eng.store, now),
+            "career": self.career.summary(eng.store, now, eng.bankroll_base),
             "scorecard": learning.stats(eng.store),
             "scanner": [{k: f[k] for k in ("coin", "price", "ch_24h", "trend", "breakout", "breakdown", "funding_apr", "volume_m")} for f in scan],
         }}
