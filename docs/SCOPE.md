@@ -133,6 +133,8 @@ Real trades come slowly, so a month of trading only teaches a handful of lessons
 
 Honest test of the filter: built from pre 2025 history only and run on 2025 to 2026, proven setups averaged +0.05R a trade after fees (933 trades, about 1.5 a day across the liquid coins), while everything else averaged -0.04R (5,906 trades). Small but real: at 1% risk that's roughly +1.5% to +2% a month before thinking and hosting costs, with plenty of variance. Over the full 7 years the filtered trades show +0.19R, but that figure is flattered because the filter was built on the same data.
 
+**Prompt caching (version 1.16).** Claude's instructions, playbook, backtested stats and tool definitions (about 5,600 tokens) are identical on every check, so they're cached; only the market update after them changes. A cached read costs a twentieth of the normal input price on Opus 5.5. When Claude checked within the last hour the cache is kept for an hour (writing it costs 2x, and each read refreshes it for free); otherwise the 5 minute cache (1.25x to write), which still covers web-search continuations within a check. Practice runs cache their shared prompt across all 60 calls. The log shows how much of each prompt came from the cache.
+
 **The plan from here:** freeze the rules for 4 to 6 weeks (or 50 to 100 closed trades), fix only bugs, then judge with the scorecard, weekly reports and checklist, and change one thing at a time.
 
 ## Stages

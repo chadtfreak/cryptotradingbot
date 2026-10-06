@@ -34,6 +34,8 @@ class FakeClaude:
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self.create))
 
     def create(self, **params):
+        if isinstance(params.get("system"), list):  # cached system prompt: keep the blocks, expose the text for asserts
+            params = {**params, "system_blocks": params["system"], "system": "".join(b["text"] for b in params["system"])}
         self.requests.append(params)
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
@@ -413,3 +415,41 @@ def test_funding_starts_for_position_opened_before_upgrade():
         clock.t += 3600
         eng.tick()
     assert eng.summary()["funding_paid"] > 0
+
+
+# Prompt caching
+
+def test_system_prompt_is_cached_and_ttl_follows_how_often_claude_checks():
+    from tests.test_multi import actions, make_multi
+    eng, fake, market, clock = make_multi([tool_reply("submit_decisions", actions(hours=6))] * 3)
+    eng.brain.c.min_minutes_between_wakes = 15
+    eng.tick()  # first look, nothing to go on: the cheap 5 minute cache
+    assert fake.requests[0]["system_blocks"][0]["cache_control"] == {"type": "ephemeral"}
+    clock.t += 20 * 60
+    eng.store.set("claude_next_check_ts", clock.t - 1)
+    eng.tick()  # checking again 20 minutes later: keep it for an hour
+    assert fake.requests[1]["system_blocks"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    clock.t += 5 * 3600
+    eng.store.set("claude_next_check_ts", clock.t - 1)
+    eng.tick()  # hours since the last check and hours until the next: back to 5 minutes
+    assert fake.requests[2]["system_blocks"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "Hyperliquid" in fake.requests[2]["system"]  # the prompt itself is unchanged
+
+
+def test_cache_reads_and_one_hour_writes_are_priced():
+    from types import SimpleNamespace
+    from bot.claude_brain import usage_cost
+    u = SimpleNamespace(input_tokens=1000, output_tokens=0, cache_read_input_tokens=5000, cache_creation_input_tokens=2000,
+                        cache_creation=SimpleNamespace(ephemeral_1h_input_tokens=2000, ephemeral_5m_input_tokens=0),
+                        server_tool_use=None)
+    # Opus 5.5: $4 input, $0.20 cache read, 1h write = 2x input
+    assert usage_cost(u, "claude-opus-5-5") == pytest.approx((1000 * 4 + 5000 * 0.20 + 2000 * 8) / 1e6)
+
+
+def test_log_shows_cache_share():
+    from tests.test_multi import actions, make_multi
+    reply = tool_reply("submit_decisions", actions())
+    reply.usage.cache_read_input_tokens, reply.usage.input_tokens = 6000, 2000
+    eng, fake, market, clock = make_multi([reply])
+    eng.tick()
+    assert any("75% of the prompt from cache" in e["message"] for e in eng.store.events())

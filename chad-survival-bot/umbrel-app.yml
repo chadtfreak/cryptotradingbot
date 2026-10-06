@@ -25,11 +25,11 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Claude stops sitting out. It's told plainly that trading costs no extra
-  thinking. Setups with a proven edge in today's conditions (marked with a star
-  in the scanner) are opened automatically at a standard 1% risk with their
-  tested stop and target, and Claude manages them. Any proven setup that isn't
-  traded is tracked on the scorecard, so you can see whether skipping helps.
+  Prompt caching. The part of Claude's prompt that never changes (its
+  instructions, playbook, research and tools, about 5,600 tokens) is cached, so
+  checks close together read it at a twentieth of the price. Practice runs reuse
+  one cached prompt across all their calls. The activity log shows how much of
+  each check came from the cache.
 dependencies: []
 path: ""
 defaultUsername: ""

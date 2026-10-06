@@ -213,7 +213,7 @@ class PracticeRun:
         return btc[max(0, idx - 60):idx + 1] if idx and idx > 60 else None
 
     def _ask(self, system, text):
-        content, cost, _ = self.brain._call(self.key, self.model, system, text, [PRACTICE_TOOL])
+        content, cost, _ = self.brain._call(self.key, self.model, system, text, [PRACTICE_TOOL], cache_ttl="5m")  # 60 calls, one shared prompt
         with self.lock:
             self.cost += cost
         call = next((b for b in content if getattr(b, "type", None) == "tool_use" and b.name == "submit_practice_trade"), None)

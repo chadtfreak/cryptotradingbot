@@ -189,9 +189,11 @@ def knowledge(name: str) -> str:
 
 def usage_cost(usage, model: str) -> float:
     inp, write, read, out = PRICES.get(model, PRICES["claude-opus-5-5"])
+    written = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    hour = getattr(getattr(usage, "cache_creation", None), "ephemeral_1h_input_tokens", 0) or 0
     cost = (
         (getattr(usage, "input_tokens", 0) or 0) * inp
-        + (getattr(usage, "cache_creation_input_tokens", 0) or 0) * write
+        + (written - hour) * write + hour * inp * 2  # 1 hour cache writes cost twice the input price
         + (getattr(usage, "cache_read_input_tokens", 0) or 0) * read
         + (getattr(usage, "output_tokens", 0) or 0) * out
     ) / 1_000_000
@@ -462,12 +464,20 @@ class ClaudeBrain:
             return None
 
     # Talking to Claude
-    def _call(self, key: str, model: str, system: str, user: str, tools: list) -> tuple[list, float, str]:
+    def _call(self, key: str, model: str, system: str, user: str, tools: list, cache_ttl: str | None = None) -> tuple[list, float, str]:
         """Runs one request, resuming if a server-side web search pauses the turn.
-        Returns the final content blocks, the total cost and the model that answered."""
+        Returns the final content blocks, the total cost and the model that answered.
+
+        cache_ttl ("5m" or "1h") caches the tools and system prompt, which are the same on every
+        check: later requests within the TTL read them at a twentieth of the price. The changing
+        part (the market context in the user message) comes after the cache point."""
         client = self.client(key)
         messages = [{"role": "user", "content": user}]
+        if cache_ttl:
+            mark = {"type": "ephemeral", **({"ttl": "1h"} if cache_ttl == "1h" else {})}
+            system = [{"type": "text", "text": system, "cache_control": mark}]
         total = 0.0
+        self.last_cache = {"read": 0, "written": 0, "uncached": 0}
         for _ in range(MAX_CONTINUATIONS + 1):
             params = dict(model=model, max_tokens=16000, system=system, messages=messages, tools=tools,
                           output_config={"effort": "medium"})
@@ -483,6 +493,8 @@ class ClaudeBrain:
                 raise
             answered_by = getattr(resp, "model", None) or model
             total += usage_cost(resp.usage, answered_by)
+            for k, field in (("read", "cache_read_input_tokens"), ("written", "cache_creation_input_tokens"), ("uncached", "input_tokens")):
+                self.last_cache[k] += getattr(resp.usage, field, 0) or 0
             if resp.stop_reason == "pause_turn":
                 messages = [{"role": "user", "content": user}, {"role": "assistant", "content": resp.content}]
                 continue
@@ -490,6 +502,12 @@ class ClaudeBrain:
                 raise RuntimeError("Claude declined to answer this request")
             return resp.content, total, answered_by
         raise RuntimeError("Claude kept pausing without finishing")
+
+    def _cache_ttl(self, eng, now: int) -> str:
+        """Keep the cache for an hour while Claude is checking often (a read refreshes it for free);
+        otherwise the cheaper 5 minute cache, which still covers web-search continuations."""
+        last = eng.store.decisions(1, kind="decision")
+        return "1h" if last and now - last[0]["ts"] <= 3600 else "5m"
 
     def system_prompt(self, eng) -> str:
         g = eng.g
@@ -512,7 +530,10 @@ class ClaudeBrain:
         if tier["searches"]:
             tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": tier["searches"]})
         user = self.build_context(eng, candles, now, tier, reason)
-        content, cost, answered_by = self._call(key, model, self.system_prompt(eng), user, tools)
+        content, cost, answered_by = self._call(key, model, self.system_prompt(eng), user, tools, cache_ttl=self._cache_ttl(eng, now))
+        c = self.last_cache
+        prompt = c["read"] + c["written"] + c["uncached"]
+        cache_note = f", {c['read'] / prompt:.0%} of the prompt from cache" if prompt and c["read"] else ""
         self.pay(eng, now, cost, f"{answered_by}: {reason}")
 
         call = next((b for b in content if getattr(b, "type", None) == "tool_use" and b.name == "submit_decisions"), None)
@@ -552,7 +573,7 @@ class ClaudeBrain:
             summary += f" (shadow calls: {', '.join(called)})"
         eng.store.add_decision(now, "decision", answered_by, reason, summary, d.get("confidence"),
                                d.get("reasoning", ""), d.get("journal"), cost, eng.last_price)
-        eng.store.log(f"Claude ({answered_by.replace('claude-', '')}, {tier['name']} mode, cost ${cost:.3f}) woke because: {reason}. "
+        eng.store.log(f"Claude ({answered_by.replace('claude-', '')}, {tier['name']} mode, cost ${cost:.3f}{cache_note}) woke because: {reason}. "
                       f"Decision: {summary}. {d.get('reasoning', '')}", level="thought", ts=now)
         return decisions
 
