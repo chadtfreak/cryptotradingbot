@@ -7,7 +7,7 @@ services:
       APP_PORT: 8765
 
   server:
-    image: ghcr.io/chadtfreak/cryptotradingbot:1.15.0
+    image: ghcr.io/chadtfreak/cryptotradingbot:1.16.0
     restart: on-failure
     environment:
       AUTH_HANDLED_BY_UMBREL: "true"
