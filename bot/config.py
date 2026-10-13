@@ -67,6 +67,8 @@ class GuardrailSettings:
     drawdown_pause_pct: float = 0.0  # this far below its peak, no new trades for a while (0 = off)
     drawdown_pause_hours: float = 24.0
     max_btc_exposure: float = 0.0  # positions can't behave like more than this share of equity in BTC, either way (0 = off)
+    thesis_mode: bool = False  # big bets: sized by conviction, held on a thesis, closed at its target or stop
+    min_conviction: int = 7  # conviction (1 to 10) a new bet needs in thesis mode
 
 
 @dataclass
@@ -86,6 +88,9 @@ class ClaudeSettings:
     allow_mainnet: bool = False  # real money stays locked until the testnet run has proved itself
     learning_phase_budget_usd: float = 0.0  # owner-funded thinking for a learning phase (0 = none)
     learning_phase_days: int = 30
+    research_every_hours: float = 24.0  # thesis mode: a deep dive this often while holding bets
+    research_when_flat_hours: float = 8.0  # and this often with no bets on
+    research_searches: int = 5  # news searches allowed in a deep dive
     trending_feed: bool = False  # CoinGecko's most searched-for coins, and whether attention leads price
     macro_feeds: bool = False  # US economic calendar and BTC dominance from free public feeds
     auto_trade_proven: bool = False  # code opens proven setups by itself at standard size, without waking Claude

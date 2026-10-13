@@ -28,6 +28,8 @@ class Decision:
     coin: str | None = None  # None means the bot's primary coin
     setup: str | None = None  # what kind of trade this is, for the setup scorecard
     target: float | None = None  # take-profit price; for "target" decisions, None removes it
+    conviction: int | None = None  # 1 to 10, sizes the bet in thesis mode
+    thesis: dict | None = None  # why, the catalyst, and when to review it
 
 
 @dataclass

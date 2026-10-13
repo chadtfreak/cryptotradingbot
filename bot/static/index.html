@@ -362,11 +362,13 @@ function renderStatus(s) {
   $("position").innerHTML = !ps.length ? `<div class="empty">Holding ${usd(s.cash)} USDC, no open positions.</div>${fr}${fund}` : `
     <div class="tablewrap"><table class="compact"><thead><tr><th>Coin</th><th>Value</th><th>Stop</th><th>Target</th><th>P&amp;L</th></tr></thead><tbody>${
       ps.map((p) => `<tr title="${esc(p.setup || "")}">
-        <td style="white-space:normal"><strong>${esc(p.coin)}</strong> <strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong><br><span class="sub">from ${px(p.entry)}${p.setup ? `, ${esc(p.setup.replace("_", " "))}` : ""}</span></td>
+        <td style="white-space:normal"><strong>${esc(p.coin)}</strong> <strong class="${p.side === "long" ? "good" : "bad"}">${p.side.toUpperCase()}</strong><br><span class="sub">from ${px(p.entry)}${p.thesis && p.thesis.conviction ? `, conviction ${p.thesis.conviction}/10` : p.setup ? `, ${esc(p.setup.replace("_", " "))}` : ""}${p.thesis && p.thesis.review_ts ? `, review ${when(p.thesis.review_ts)}` : ""}</span></td>
         <td>${usd(p.value)}</td><td>${px(p.stop)}${p.stage ? `<br><span class="sub">${p.stage}</span>` : ""}</td><td>${p.target ? px(p.target) : "-"}</td>
-        <td class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}${p.r_now != null ? `<br><span class="sub">${p.r_now > 0 ? "+" : ""}${p.r_now.toFixed(1)}R</span>` : ""}</td></tr>`).join("")
+        <td class="${p.unrealised >= 0 ? "good" : "bad"}">${usd(p.unrealised, true)}${p.r_now != null ? `<br><span class="sub">${p.r_now > 0 ? "+" : ""}${p.r_now.toFixed(1)}R</span>` : ""}</td></tr>
+        ${p.thesis && p.thesis.why ? `<tr><td colspan="5" class="sub" style="white-space:normal;padding-top:0">Thesis: ${esc(p.thesis.why)}${p.thesis.catalyst ? ` Catalyst: ${esc(p.thesis.catalyst)}` : ""}</td></tr>` : ""}`).join("")
     }</tbody></table></div>
-    <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions, ${usd(s.cash)} USDC spare.${s.open_risk != null && s.equity ? ` Open risk if every stop is hit: ${usd(s.open_risk)} (${(s.open_risk / s.equity * 100).toFixed(1)}% of equity${s.max_total_risk ? `, cap ${Math.round(s.max_total_risk * 100)}%` : ""}).` : ""}${s.btc_exposure != null && s.equity ? ` Acts like ${usd(s.btc_exposure, true)} of BTC (${Math.round(s.btc_exposure / s.equity * 100)}% of equity, cap ${Math.round(s.max_btc_exposure * 100)}%).` : ""}${s.drawdown ? ` ${(s.drawdown * 100).toFixed(1)}% below its best.` : ""}${s.dd_pause_until && s.dd_pause_until * 1000 > Date.now() ? ` <strong class="bad">New trades paused until ${when(s.dd_pause_until)}.</strong>` : ""}</div>${fund}`;
+    <div class="sub" style="margin-top:8px">${ps.length} of ${s.max_positions} positions${s.max_leverage > 1 && s.equity
+      ? `, exposure ${usd(s.exposure)} (${(s.exposure / s.equity).toFixed(1)}x equity, limit ${s.max_leverage}x).` : `, ${usd(s.cash)} USDC spare.`}${s.open_risk != null && s.equity ? ` Open risk if every stop is hit: ${usd(s.open_risk)} (${(s.open_risk / s.equity * 100).toFixed(1)}% of equity${s.max_total_risk ? `, cap ${Math.round(s.max_total_risk * 100)}%` : ""}).` : ""}${s.btc_exposure != null && s.equity ? ` Acts like ${usd(s.btc_exposure, true)} of BTC (${Math.round(s.btc_exposure / s.equity * 100)}% of equity, cap ${Math.round(s.max_btc_exposure * 100)}%).` : ""}${s.drawdown ? ` ${(s.drawdown * 100).toFixed(1)}% below its best.` : ""}${s.dd_pause_until && s.dd_pause_until * 1000 > Date.now() ? ` <strong class="bad">New trades paused until ${when(s.dd_pause_until)}.</strong>` : ""}</div>${fund}`;
   if (s.min_volume_usd) $("minvol").textContent = `$${Math.round(s.min_volume_usd / 1e6)}M`;
   if (s.brain && s.brain.sponsored > 0) $("costs-note").textContent += `, plus ${usd(s.brain.sponsored)} thinking paid by you`;
   renderBrain(s.brain);
@@ -387,8 +389,9 @@ function renderBrain(b) {
   $("model").textContent = b.key_set ? (b.model ? b.model.replace("claude-", "") : "") : "";
   $("tier").title = TIER_TEXT[b.tier] || "";
   $("style").textContent = b.style || "";
-  $("style").classList.toggle("hidden", b.style !== "full send");
-  $("style").title = "Loose guardrails: no trade or daily loss limits, up to 25% risk per trade. Only the floor and budget hold it back.";
+  $("style").classList.toggle("hidden", !["full send", "conviction"].includes(b.style));
+  $("style").title = b.style === "conviction" ? "Studies hard, then makes up to 3 big bets sized by conviction, with up to 3x leverage on testnet. Real money stays at 1x."
+    : "Loose guardrails: no trade or daily loss limits.";
   const lp = b.learning && b.learning.active ? b.learning : null;
   $("spend-label").textContent = lp ? `Learning phase, paid by you, until ${when(lp.end)}` : "Thinking budget this month";
   $("spend").textContent = `$${b.spent_this_month.toFixed(2)} of $${b.budget.toFixed(2)}`;

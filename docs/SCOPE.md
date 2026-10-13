@@ -137,6 +137,18 @@ Honest test of the filter: built from pre 2025 history only and run on 2025 to 2
 
 **Trending coins (version 1.17).** An idea borrowed from Chris Camillo's "social arbitrage": spot rising attention before the price reflects it. Every hour the bot reads CoinGecko's list of the most searched-for coins and shows it to Claude. When a coin on Hyperliquid newly appears on the list while its price is still quiet (under 5% in 24 hours), the bot notes the price and follows it for 3 days. The running results (average move after 24 and 72 hours, how often it rose) tell us whether attention really leads price in crypto before anyone trades on it. It's an input and a measurement, not a trading rule.
 
+## Conviction mode (version 2.0, October 2026)
+
+The owner rethought the scope: lots of small, careful trades were burning thinking money without getting anywhere. Inspired by Chris Camillo, Claude now studies hard and then makes a few big bets.
+
+- **Deep dives and checks.** A deep dive (high effort, up to 5 news searches) runs once a day while holding bets and every 8 hours while hunting for one. Between deep dives Claude is only woken for bets it holds: price near the stop, a big move, a thesis review falling due, or major US economic news. Coins it doesn't hold never wake it.
+- **Theses.** Every bet has a thesis, a catalyst, a stop where the thesis is wrong, an optional target, a review time and a conviction score from 1 to 10.
+- **Conviction sizing.** No bet below conviction 7. At the stop, a conviction 7 bet risks 4% of equity, 8 risks 6%, 9 risks 8% and 10 risks 10%. At most 3 bets and 30% total risk.
+- **Leverage.** Up to 3x on testnet. Real money is held to 1x in code and on the exchange, whatever the config says.
+- **Exits.** Only the stop and the thesis target close a bet automatically. No breakeven moves, trailing or time stops: Claude holds while the thesis holds and decides at each review.
+- **Removed:** drawdown brakes, the BTC bet cap and automatic small trades. Kept: the survival floor (half the bankroll).
+- **The honest risk:** leverage magnifies whatever edge there is, and our tests found only a small one. Four or five wrong high-conviction bets in a row reach the floor.
+
 **The plan from here:** freeze the rules for 4 to 6 weeks (or 50 to 100 closed trades), fix only bugs, then judge with the scorecard, weekly reports and checklist, and change one thing at a time.
 
 ## Stages

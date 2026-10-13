@@ -25,10 +25,12 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Trending coins. Claude now sees the coins people are searching for most on
-  CoinGecko. When one that trades on Hyperliquid starts trending while its price
-  is still quiet, the bot follows it for 3 days to test whether attention leads
-  price. Results are on the Learning page.
+  Conviction mode. Claude now studies hard in a daily deep dive, then makes up
+  to 3 big bets, each with a written thesis, catalyst, stop and review time.
+  Conviction sets the size (4% to 10% of the account at risk) and it can use up
+  to 3x leverage on testnet. Real money stays at 1x. Drawdown brakes, the BTC
+  cap and automatic small trades are off; the survival floor stays. Checks
+  between deep dives only happen for bets it holds, so it burns far fewer tokens.
 dependencies: []
 path: ""
 defaultUsername: ""

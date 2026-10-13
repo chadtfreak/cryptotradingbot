@@ -111,11 +111,17 @@ class Engine:
     @property
     def g(self):
         g = self.base_g
+        if g.max_leverage > 1 and self.on_mainnet:  # real money is held to 1x whatever the config says
+            g = dataclasses.replace(g, max_leverage=1.0)
         if self.store.get("probation"):
             g = dataclasses.replace(g, max_risk_per_trade=g.max_risk_per_trade / 2, max_positions=1)
         if g.drawdown_half_risk_pct and (self.store.get("drawdown") or 0) * 100 >= g.drawdown_half_risk_pct:
             g = dataclasses.replace(g, max_risk_per_trade=g.max_risk_per_trade / 2)
         return g
+
+    @property
+    def on_mainnet(self) -> bool:
+        return self.live and getattr(self.broker.venue, "network", "") == "mainnet"
 
     # Drawdown: how far below its best it is, measured like a fund's unit price so top-ups don't count
     def _nav(self, equity: float) -> float:
@@ -367,10 +373,10 @@ class Engine:
                 moved = "fell to or below" if pos["qty"] > 0 else "rose to or above"
                 self._close(coin, now, f"Stop hit: {coin} {fmt_px(p)} {moved} stop {fmt_px(pos['stop'])}.")
 
-        if self.g.manage_trades:
+        if self.g.manage_trades or self.g.thesis_mode:
             for coin in list(self.positions):
                 try:
-                    self._manage(coin, now)
+                    self._manage(coin, now) if self.g.manage_trades else self._thesis_check(coin, now)
                 except Exception as exc:  # e.g. the exchange rejects an order: the exchange stop still protects it
                     warned = self.store.get("manage_warned") or {}
                     if now - warned.get(coin, 0) >= 3600:
@@ -415,6 +421,11 @@ class Engine:
             self._set_target(coin, d.target, now)
         elif d.stop is not None and pos:
             self._move_stop(coin, d.stop, now)
+        if d.thesis and d.action in ("hold", "target"):  # a thesis update on an open bet
+            pos = self.position(coin)
+            if pos:
+                pos["thesis"] = {**(pos.get("thesis") or {}), **d.thesis}
+                self._save_position(coin, pos)
 
     def tradable(self, coin: str) -> bool:
         if coin == self.primary:
@@ -489,6 +500,14 @@ class Engine:
         equity = self.equity()
         gas = self.s.costs.gas_per_swap_usd
         distance = abs(price - new_stop) / price
+        if g.thesis_mode:  # big bets: conviction decides the size, from the risk to the stop
+            conv = int(d.conviction or 0)
+            if conv < g.min_conviction:
+                self.store.log(f"Guardrail: no {coin} {word}. Conviction {conv}/10 is below the {g.min_conviction} a bet needs.", ts=now)
+                return
+            steps = max(10 - g.min_conviction, 1)
+            share = 0.4 + 0.6 * min(conv - g.min_conviction, steps) / steps
+            d = dataclasses.replace(d, size_usd=equity * g.max_risk_per_trade * share / distance)
         if d.size_usd is None:
             notional = position_size(equity, self.cash, price, new_stop, self.s.strategy, gas)
             notional = min(notional, max(equity * g.max_leverage * self.s.strategy.max_position_pct - self.exposure() - gas, 0))
@@ -521,7 +540,7 @@ class Engine:
         if notional < self.s.strategy.min_trade_usd:
             self.store.log(f"{d.reason} But the {coin} trade would be too small, so skipping.", ts=now)
             return
-        self._open(coin, side, notional, price, new_stop, now, d.reason, d.setup, d.target)
+        self._open(coin, side, notional, price, new_stop, now, d.reason, d.setup, d.target, d.thesis)
 
     def _move_stop(self, coin: str, new: float, now: int) -> None:
         pos = self.position(coin)
@@ -574,6 +593,15 @@ class Engine:
         if not pos.get("be_done") and now - (pos.get("managed_since") or now) >= self.g.time_stop_hours * 3600:
             self._close(coin, now, f"Time stop: {coin} hasn't reached +1R in {self.g.time_stop_hours / 24:.0f} days ({gain:+.1f}R now). "
                                    "Freeing the money for something that's working.")
+
+    def _thesis_check(self, coin: str, now: int) -> None:
+        """In thesis mode the only automatic exit besides the stop: the thesis target."""
+        pos, p = self.position(coin), self.prices.get(coin)
+        target = (pos or {}).get("target")
+        if not pos or p is None or not target:
+            return
+        if (p - target) * (1 if pos["qty"] > 0 else -1) >= 0:
+            self._close(coin, now, f"Thesis target reached: {coin} {fmt_px(p)} hit {fmt_px(target)}. Taking the whole bet off.")
 
     def _track(self, coin: str) -> None:
         """Best and worst price since entry, for trailing stops and the movement stats."""
@@ -656,11 +684,13 @@ class Engine:
         if not self.live or coin in self._leverage_set:
             return
         self._leverage_set.add(coin)
+        lev = 1 if self.on_mainnet else max(1, int(self.g.max_leverage))
         try:
-            self.broker.venue.set_leverage(1, coin)
-            self.store.log(f"Set the exchange's leverage for {coin} to 1x, so it will refuse anything bigger.", ts=now)
+            self.broker.venue.set_leverage(lev, coin)
+            self.store.log(f"Set the exchange's leverage for {coin} to {lev}x, so it will refuse anything bigger.", ts=now)
         except Exception as exc:
-            self.store.log(f"Couldn't set the exchange's {coin} leverage to 1x ({exc}). The bot's own 1x limit still applies.", level="warning", ts=now)
+            self.store.log(f"Couldn't set the exchange's {coin} leverage to {lev}x ({exc}). The bot's own {self.g.max_leverage:g}x limit still applies.",
+                           level="warning", ts=now)
 
     def _reconcile(self, now: int) -> None:
         """The exchange is the truth: rebuild balance and positions from it every tick.
@@ -707,7 +737,7 @@ class Engine:
 
     # Trading
     def _open(self, coin: str, side: int, notional: float, price: float, stop: float, now: int, reason: str,
-              setup: str | None = None, target: float | None = None) -> None:
+              setup: str | None = None, target: float | None = None, thesis: dict | None = None) -> None:
         self._ensure_leverage(coin, now)
         fill = self.broker.buy(notional, price, coin=coin) if side > 0 else self.broker.sell(notional / price, price, coin=coin)
         pos = self.position(coin)
@@ -727,6 +757,11 @@ class Engine:
                 pos["target"] = target if target and (target - fill.price) * side > 0 else default
         elif target and (target - fill.price) * side > 0:
             pos["target"] = target
+        if self.g.thesis_mode:
+            if target and (target - fill.price) * side > 0:
+                pos["target"] = target
+            if thesis:
+                pos["thesis"] = {**(pos.get("thesis") or {}), **thesis}
         self.store.set("cash", self.cash + fill.cash_delta)
         self._save_position(coin, pos)
         self.store.add_trade(now, fill, None, self.market.usd_to_aud(), reason, coin=coin)
@@ -818,7 +853,8 @@ class Engine:
                               "value": abs(p["qty"]) * px if px else None, "unrealised": unreal, "target": p.get("target"),
                               "r_now": (px - p["entry_px"]) / p["risk_unit"] * (1 if p["qty"] > 0 else -1)
                               if px and p.get("risk_unit") and p.get("entry_px") else None,
-                              "stage": "trailing" if p.get("half_taken") else "breakeven" if p.get("be_done") else None})
+                              "stage": "trailing" if p.get("half_taken") else "breakeven" if p.get("be_done") else None,
+                              "thesis": p.get("thesis")})
         return {
             "bot": self.brain.name,
             "label": self.brain.label,
@@ -855,6 +891,7 @@ class Engine:
             "drawdown": self.store.get("drawdown"),
             "dd_pause_until": self.store.get("dd_pause_until"),
             "max_total_risk": self.g.max_total_risk,
+            "max_leverage": self.g.max_leverage,
             "min_volume_usd": self.g.min_volume_usd,
             "probation": bool(self.store.get("probation")),
             "started_at": self.store.get("started_at"),

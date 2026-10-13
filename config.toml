@@ -45,27 +45,27 @@ max_positions = 1
 min_volume_usd = 0               # ETH only
 
 [claude_guardrails]
-# Claude's hard limits: "full send" freedom (any liquid coin, long or short, no trade limits) with professional risk limits.
-style = "full send"
-max_risk_per_trade = 0.02        # risk at most 2% of equity on one trade, like a professional
-min_stop_distance_pct = 0.5      # every buy still needs a stop, anywhere 0.5% to 50% below price
+# Claude's limits in conviction mode: study hard, then make a few big, leveraged bets on testnet.
+# Real money is always held to 1x in code, whatever this says.
+style = "conviction"
+thesis_mode = true               # every bet has a thesis, a catalyst, a stop where it's wrong and a review date
+min_conviction = 7               # no new bet below conviction 7 out of 10
+max_risk_per_trade = 0.10        # a conviction-10 bet can lose up to 10% of equity at its stop (7: 4%, 8: 6%, 9: 8%)
+max_total_risk = 0.30            # all open bets together can lose at most 30% if every stop is hit
+max_leverage = 3.0               # up to 3x on testnet. Real money: always 1x.
+max_positions = 3                # its three best ideas at most
+min_stop_distance_pct = 0.5      # every bet still needs a stop where the thesis is wrong
 max_stop_distance_pct = 50.0
 max_trades_per_day = 0           # no limit
 daily_loss_limit_pct = 0         # no daily loss limit
-allow_adding = true              # can add to a position it already holds
-stops_only_up = false            # can move its stop up or down
-allow_short = true               # can bet on ETH falling
-max_leverage = 1.0               # never more exposure than its equity. Hard-coded safety, keep at 1.
-max_positions = 10               # up to 10 coins at once
+allow_adding = true              # can add to a bet that's working
+stops_only_up = false
+allow_short = true
 min_volume_usd = 20000000        # any Hyperliquid coin with $20M+ daily volume
-max_total_risk = 0.10            # at most 10% of equity lost if every open stop is hit (measured from entry)
-manage_trades = true             # take-profit, breakeven, trailing and time stops run automatically
-target_r = 2.0                   # default take-profit: twice the amount risked (Claude can set its own)
-time_stop_hours = 120            # close a trade that hasn't reached +1R in 5 days
-drawdown_half_risk_pct = 10      # 10% below its peak: half risk per trade until a new high
-drawdown_pause_pct = 20          # 20% below its peak: no new trades for a day (once per drawdown)
-drawdown_pause_hours = 24
-max_btc_exposure = 0.6           # all positions together can't act like more than 60% of equity in BTC, long or short
+manage_trades = false            # no automatic breakeven, trailing or time stops: it holds while the thesis holds
+drawdown_half_risk_pct = 0       # no drawdown brakes (the survival floor still applies)
+drawdown_pause_pct = 0
+max_btc_exposure = 0             # no cap on one big bet on BTC's direction
 
 [claude]
 enabled = true
@@ -76,16 +76,19 @@ lean_model = "claude-sonnet-5-5" # used when money or budget is tight
 review_model = "claude-opus-5-5" # weekly review where it updates its lessons
 heartbeat_hours = 24.0           # check in at least this often even when nothing happens
 move_trigger_pct = 1.5           # wake if price moves this much since the last check
-min_minutes_between_wakes = 15  # market events can wake it this often at most
+min_minutes_between_wakes = 30  # market events can wake it this often at most
 min_check_hours = 0.25           # shortest check-in Claude can schedule for itself: it decides how often to look
 review_every_days = 7
 web_searches_per_wake = 2        # news searches allowed per check, when budget allows
 allow_mainnet = false            # real-money Hyperliquid stays locked until the testnet run has proved itself
 learning_phase_budget_usd = 40.0 # a one-off learning phase: thinking paid by the owner, not Claude's balance, smartest model throughout
 learning_phase_days = 30         # it starts on first run and ends after this many days or when the budget is used
-auto_trade_proven = true         # proven setups are opened by code at standard size; Claude manages them on its next check
+auto_trade_proven = false        # off in conviction mode: Claude makes its own big bets
 standard_risk = 0.01             # a standard-size trade risks 1% of equity at its stop
 maker_entries = true             # enter with a limit order first: 0.015% fees instead of 0.045%
 maker_wait_seconds = 20          # then buy or sell whatever's left at the market price
+research_every_hours = 24        # conviction mode: a deep dive once a day while holding bets...
+research_when_flat_hours = 8     # ...and every 8 hours while hunting for one
+research_searches = 5            # news searches allowed in a deep dive
 trending_feed = true             # CoinGecko trending coins: shown to Claude, and early attention is followed to see if it leads price
 macro_feeds = true               # US economic calendar (wakes Claude around big releases) and BTC dominance, from free feeds

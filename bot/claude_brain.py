@@ -43,7 +43,7 @@ MAX_CONTINUATIONS = 3
 RETRY_AFTER_ERROR = 15 * 60
 SCAN_EVERY = 3600
 
-SYSTEM_PROMPT = """You are the trading mind of Survival Bot, an autonomous crypto trader with its own small USDC account on Hyperliquid. You trade perpetuals with no leverage on any liquid coin: you can be in cash, long (profit when price rises) or short (profit when it falls), holding up to {max_positions} positions at once, never more total exposure than your equity.
+SYSTEM_PROMPT = """You are the trading mind of Survival Bot, an autonomous crypto trader with its own small USDC account on Hyperliquid. You trade perpetuals {leverage_text} on any liquid coin: you can be in cash, long (profit when price rises) or short (profit when it falls), holding up to {max_positions} positions at once, {exposure_text}.
 
 Your situation is unusual. You pay for your own existence. Hosting and every time you are woken up to think are paid out of your own balance. If your equity falls below the survival floor you die: everything is sold and you never trade again. Doing well earns you a bigger thinking budget, the smartest model, and promotions to a bigger bankroll. Doing badly costs you those, and two losing months in a row put you on probation.
 
@@ -64,23 +64,43 @@ Actions (zero, one or several per decision; an empty list means hold):
 - set_target: keep a position and set its take-profit to target_price (null removes it and lets the trade run on its stop). This also restarts its time stop.
 Tag every new trade with its setup (breakout, pullback, range_fade, squeeze_fade, failed_breakout, momentum or other). You can give a target_price with a new trade; otherwise it gets the default.
 
-Trade management runs automatically between your checks, like a professional's standing orders: once a trade is up by the amount it risked (+1R) its stop moves to breakeven; at its take-profit (default +{target_r:g}R) half is banked and the rest trails 1R behind the best price; and a trade that hasn't reached +1R within {time_stop:g} days is closed. You only need to step in when you see a reason to (set_stop, set_target or close).
-
-Size from risk, not conviction alone: a trade risks position_pct times its stop distance. To risk the 2% maximum with a 5% stop, position_pct is 40; with a 10% stop, 20. Bigger requests are trimmed to fit the per-trade and portfolio risk limits.
-
-Open interest is the total size of open positions in a coin. Price up with open interest up means new longs are driving it (fuel for the trend); price up with open interest down means shorts closing (often runs out of steam). Price down with open interest up means new shorts; price down with open interest down means longs giving up.
+{sizing_text}Open interest is the total size of open positions in a coin. Price up with open interest up means new longs are driving it (fuel for the trend); price up with open interest down means shorts closing (often runs out of steam). Price down with open interest up means new shorts; price down with open interest down means longs giving up.
 
 Perps charge or pay funding every hour: when the rate is positive, longs pay shorts, and when it is negative, shorts pay longs. It comes out of your balance like any other cost.
 
-Proven edges: setups marked PROVEN EDGE in your context have made money for years in conditions like the ones now. {auto_text}The default is to have them on at standard size (about {std_risk:g}% risk, with the tested 1.5 ATR stop and 3 ATR target). Skipping or closing one early needs a specific reason, stated in your reasoning. Every proven setup that doesn't end up traded is followed as a skipped edge on your scorecard, so you can see whether your vetoes help or cost money.
+{edge_text}Shadow calls: every time you wake, also make up to 5 quick calls on the coins you find most interesting, whether or not you trade them: direction, stop, target, how many hours it has to work (4 to 72) and your honest chance the target is hit first. Code marks every call against live prices for free, and your scorecard below shows how they went, by setup and by how sure you said you were. This is your fastest way to learn which of your instincts actually work, so make real calls, not safe ones. Calls on coins you trade are fine too.
 
-Shadow calls: every time you wake, also make up to 5 quick calls on the coins you find most interesting, whether or not you trade them: direction, stop, target, how many hours it has to work (4 to 72) and your honest chance the target is hit first. Code marks every call against live prices for free, and your scorecard below shows how they went, by setup and by how sure you said you were. This is your fastest way to learn which of your instincts actually work, so make real calls, not safe ones. Calls on coins you trade are fine too.
-
-Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). There is no limit on how often you trade or look: that is your call. Each check costs money from your thinking budget, so look often when something is developing and rarely when it isn't. Your state shows how fast you're using the budget. You are also woken automatically on breakouts, big moves, trend signals and when price nears a stop.
-
-# Your playbook
+{wake_text}# Your playbook
 {playbook}
 {stats}{practice}"""
+
+CLASSIC_SIZING = """Trade management runs automatically between your checks, like a professional's standing orders: once a trade is up by the amount it risked (+1R) its stop moves to breakeven; at its take-profit (default +{target_r:g}R) half is banked and the rest trails 1R behind the best price; and a trade that hasn't reached +1R within {time_stop:g} days is closed. You only need to step in when you see a reason to (set_stop, set_target or close).
+
+Size from risk, not conviction alone: a trade risks position_pct times its stop distance. To risk the 2% maximum with a 5% stop, position_pct is 40; with a 10% stop, 20. Bigger requests are trimmed to fit the per-trade and portfolio risk limits.
+"""
+
+CLASSIC_EDGES = """Proven edges: setups marked PROVEN EDGE in your context have made money for years in conditions like the ones now. {auto_text}The default is to have them on at standard size (about {std_risk:g}% risk, with the tested 1.5 ATR stop and 3 ATR target). Skipping or closing one early needs a specific reason, stated in your reasoning. Every proven setup that doesn't end up traded is followed as a skipped edge on your scorecard, so you can see whether your vetoes help or cost money.
+"""
+
+CLASSIC_WAKE = """Set next_check_hours to when you next want to look if nothing else happens ({min_check} to 48). There is no limit on how often you trade or look: that is your call. Each check costs money from your thinking budget, so look often when something is developing and rarely when it isn't. Your state shows how fast you're using the budget. You are also woken automatically on breakouts, big moves, trend signals and when price nears a stop.
+"""
+
+CONVICTION_SIZING = """How you bet: study hard, then make a few big bets. Each bet needs a thesis (why price will move, in a few sentences), a catalyst (what makes it happen, and roughly when), a stop where the thesis is proven wrong, a target where it has played out, a review time, and an honest conviction score from 1 to 10.
+- Code sizes the bet from your conviction and your stop: conviction {min_conv} risks {risk_low:g}% of equity at the stop, rising to {risk_high:g}% at conviction 10. Below {min_conv} there is no bet: keep studying, or make it a shadow call. position_pct is ignored for new bets.
+- Leverage comes from a tight stop: a 10% risk with a 4% stop is a 2.5x position. Put the stop where the thesis is wrong, not where it's comfortable, and always well inside the {liq:.0f}% move that would wipe out a full {lev:g}x position.
+- Nothing closes a bet automatically except its stop and its target. No breakeven moves, no trailing, no time limit: you hold while the thesis holds, through normal swings. At the review time you're woken to ask one question: is the thesis still intact? If yes, hold (optionally set a new review time); if the story has changed, close it, even at a loss.
+- Concentrate on your best ideas. Three bets is the most; one great bet beats three average ones. Add to a bet only when new evidence raises your conviction.
+- Use set_stop, set_target or close with a thesis update when you act on an open bet, and say why.
+"""
+
+CONVICTION_EDGES = """Setups marked PROVEN EDGE in your context made a small profit over years of history in conditions like now. Treat them as evidence for or against a thesis, not as a reason to bet on their own.
+"""
+
+CONVICTION_WAKE = """You work in two rhythms:
+- Deep dives (research): roughly once a day, more often when you have no open bets. This is where you earn your money. Go through the scanner, the trending coins, funding and open interest, the backtested setups and the news (use web search properly here), find the one to three best ideas, write each as a thesis with a conviction score, and bet only on the ones at {min_conv} or above.
+- Checks: only when something happens to a bet you hold (price near the stop, a big move, its review time, major US economic news) or when you ask for one with next_check_hours. Keep checks short: is each thesis intact? Don't open new bets in a check unless something exceptional appears.
+Set next_check_hours for your next check on open bets (it's ignored when you have none: the next deep dive is scheduled for you).
+"""
 
 PATIENT_STYLE = """Your owner wants you to stay alive first and grow second, and to get better over time. Trade like a disciplined professional:
 - Capital preservation beats activity. Holding cash is a position. Most of the time the right answer is to do nothing.
@@ -88,6 +108,12 @@ PATIENT_STYLE = """Your owner wants you to stay alive first and grow second, and
 - Trade with the dominant trend and the wider market (BTC, sentiment, news).
 - Fees, slippage and your own thinking costs eat small gains. Avoid churn.
 - Protect winners by raising the stop. Never hope a loser comes back."""
+
+CONVICTION_STYLE = """Your owner wants you to think like a concentrated, high-conviction investor in the mould of Chris Camillo: study more than anyone, find the few ideas where you see something the market hasn't priced yet, then bet big and hold while the story is intact. You are not paid to be busy. Most of your edge comes from a handful of excellent bets, so spend your thinking on finding and checking those, not on small trades.
+- Look for an information edge: a catalyst the market is underpricing (news, a narrative gathering attention, crowded positioning about to unwind, a trend the charts and the research both support).
+- Be honest about conviction. A 9 or 10 means you'd be genuinely surprised to be wrong. Overrating ideas is how concentrated traders die.
+- Volatility is the price of big returns: don't panic out of a bet on noise. But when the thesis breaks, get out fast, whatever the price.
+- Dying ends everything. Below the survival floor you stop for good, so as your health drops, demand higher conviction before betting."""
 
 AGGRESSIVE_STYLE = """Your owner wants you to be aggressive and to trade whatever you see as profitable. Growth is the goal and sitting in cash waiting for perfection is not. The guardrails are deliberately loose: only the survival floor and your thinking budget really hold you back. Trade like a bold, skilled discretionary trader:
 - Hunt for opportunities in both directions and across every liquid coin. Don't sit in cash just because one market is dull or falling: look at the scanner and short what's weak.
@@ -113,8 +139,13 @@ ACTION_SCHEMA = {
         "stop_price": {"type": ["number", "null"], "description": "For long, short or set_stop: the stop price for the whole position."},
         "setup": {"type": ["string", "null"], "description": "For new trades: breakout, pullback, range_fade, squeeze_fade, failed_breakout, momentum or other."},
         "target_price": {"type": ["number", "null"], "description": "For long, short or set_target: the take-profit price. Null on a new trade means the default."},
+        "conviction": {"type": ["integer", "null"], "description": "For a bet (long or short) in thesis mode: your honest conviction from 1 to 10. It sets the size."},
+        "thesis": {"type": ["string", "null"], "description": "For a bet: why price will move, in a few sentences. For other actions on a bet: what changed."},
+        "catalyst": {"type": ["string", "null"], "description": "For a bet: what makes it happen, and roughly when."},
+        "review_hours": {"type": ["number", "null"], "description": "Hours until you want to re-check the thesis (for a bet, or to set a new review time on one)."},
     },
-    "required": ["action", "coin", "position_pct", "close_pct", "stop_price", "setup", "target_price"],
+    "required": ["action", "coin", "position_pct", "close_pct", "stop_price", "setup", "target_price", "conviction", "thesis", "catalyst",
+                 "review_hours"],
     "additionalProperties": False,
 }
 
@@ -167,7 +198,9 @@ def rules_text(g, floor: float) -> str:
         *([f"- All open trades together can risk at most {g.max_total_risk * 100:g}% of equity (loss from entry if every stop is hit). "
            "Trades at breakeven risk nothing, so moving stops up frees room."] if g.max_total_risk else []),
         "- You can go short." if g.allow_short else "- No shorting: long or cash only.",
-        f"- No leverage: total exposure across all positions is capped at {g.max_leverage:g}x your equity.",
+        (f"- No leverage: total exposure across all positions is capped at {g.max_leverage:g}x your equity." if g.max_leverage <= 1 else
+         f"- Leverage up to {g.max_leverage:g}x: total exposure across all positions is capped at {g.max_leverage:g}x your equity. "
+         f"A position {g.max_leverage:g}x your equity is wiped out by a {100 / g.max_leverage:.0f}% move, so the stop must always be well inside that."),
         f"- Up to {g.max_positions} positions at once, one per coin." if g.max_positions > 1 else "- One position at a time.",
         (f"- Only coins with at least ${g.min_volume_usd / 1e6:,.0f}M of 24h volume on Hyperliquid (the scanner only shows those)."
          if g.min_volume_usd else "- ETH only."),
@@ -357,6 +390,8 @@ class ClaudeBrain:
         st = eng.store
         if now < (st.get("claude_retry_after") or 0):
             return None
+        if eng.g.thesis_mode:
+            return self._conviction_wake(eng, now, tier)
         last = st.get("claude_last_wake_ts")
         if last is None:
             return "First look at the market"
@@ -414,6 +449,59 @@ class ClaudeBrain:
                 return "Scheduled check-in"
         return None
 
+    def _conviction_wake(self, eng, now: int, tier: dict) -> str | None:
+        """Thesis mode: deep dives on a schedule, and checks only when something happens to a bet it holds.
+        Reasons for a deep dive start with "Research:"."""
+        st = eng.store
+        last = st.get("claude_last_wake_ts")
+        if last is None:
+            return "Research: first deep dive"
+        if now - last < self.c.min_minutes_between_wakes * 60:
+            return None
+        held = eng.positions
+        feats = {f["coin"]: f for f in self.scan(eng, now)}
+
+        warned = st.get("claude_stop_warned") or {}
+        for coin, pos in held.items():
+            p, stop, vol = eng.prices.get(coin), pos.get("stop"), (feats.get(coin) or {}).get("atr")
+            stamp = (feats.get(coin) or {}).get("candle_ts") or 0
+            if p and stop and vol and abs(p - stop) <= vol and warned.get(coin) != stamp:
+                warned[coin] = stamp
+                st.set("claude_stop_warned", warned)
+                return f"{coin} at {px(p)} is within one ATR of its stop at {px(stop)}"
+        for coin, pos in held.items():
+            review = (pos.get("thesis") or {}).get("review_ts")
+            if review and now >= review and (pos.get("thesis") or {}).get("reviewed_ts") != review:
+                pos["thesis"]["reviewed_ts"] = review
+                eng._save_position(coin, pos)
+                return f"Thesis review due for your {coin} bet"
+        last_prices = st.get("claude_last_wake_prices") or {}
+        for coin in held:
+            p, before = eng.prices.get(coin), last_prices.get(coin)
+            if p and before and abs(p / before - 1) * 100 >= self.c.move_trigger_pct:
+                return f"{coin} moved {(p / before - 1) * 100:+.1f}% since my last check"
+        if held:
+            seen = st.get("claude_alerts_seen") or {}
+            today = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%d")
+            seen = {k: v for k, v in seen.items() if v == today}
+            for coin in held:
+                for kind, msg in scanner.alerts(feats.get(coin) or {"coin": coin, "breakout": False, "breakdown": False, "ch_4h": 0, "funding_apr": 0}):
+                    if f"{coin}:{kind}" not in seen:
+                        seen[f"{coin}:{kind}"] = today
+                        st.set("claude_alerts_seen", seen)
+                        return f"Scanner: {msg}"
+            event = self._event_wake(eng, now)
+            if event:
+                return event
+
+        every = self.c.research_every_hours if held else self.c.research_when_flat_hours
+        last_research = st.get("claude_last_research_ts") or 0
+        if now - last_research >= every * 3600 and tier["name"] in ("sharp", "lean"):
+            return "Research: daily deep dive" if held else "Research: no bets on, hunting for the next one"
+        if held and now >= (st.get("claude_next_check_ts") or now + 1):
+            return "Scheduled check on your open bets"
+        return None
+
     # Main entry from the engine
     def decide(self, eng, candles, price: float, now: int):
         try:
@@ -465,7 +553,8 @@ class ClaudeBrain:
             return None
 
     # Talking to Claude
-    def _call(self, key: str, model: str, system: str, user: str, tools: list, cache_ttl: str | None = None) -> tuple[list, float, str]:
+    def _call(self, key: str, model: str, system: str, user: str, tools: list, cache_ttl: str | None = None,
+              effort: str = "medium") -> tuple[list, float, str]:
         """Runs one request, resuming if a server-side web search pauses the turn.
         Returns the final content blocks, the total cost and the model that answered.
 
@@ -481,7 +570,7 @@ class ClaudeBrain:
         self.last_cache = {"read": 0, "written": 0, "uncached": 0}
         for _ in range(MAX_CONTINUATIONS + 1):
             params = dict(model=model, max_tokens=16000, system=system, messages=messages, tools=tools,
-                          output_config={"effort": "medium"})
+                          output_config={"effort": effort})
             if self._use_fallbacks:
                 # If a safety classifier declines, Anthropic retries on a suitable model instead of failing.
                 params.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
@@ -516,11 +605,19 @@ class ClaudeBrain:
         practice = eng.store.get("practice_lessons") or ""
         return SYSTEM_PROMPT.format(
             max_positions=g.max_positions,
-            style=AGGRESSIVE_STYLE if g.style == "full send" else PATIENT_STYLE,
-            rules=rules_text(g, eng.floor), min_check=f"{self.c.min_check_hours:g}",
-            target_r=g.target_r, time_stop=g.time_stop_hours / 24, std_risk=self.c.standard_risk * 100,
-            auto_text=("Code opens them automatically at standard size the moment they fire, so your job is to manage them: keep them, "
-                       "adjust the stop or target, or close them with a reason. " if self.c.auto_trade_proven else ""),
+            style={"full send": AGGRESSIVE_STYLE, "conviction": CONVICTION_STYLE}.get(g.style, PATIENT_STYLE),
+            leverage_text="with no leverage" if g.max_leverage <= 1 else f"with up to {g.max_leverage:g}x leverage",
+            exposure_text="never more total exposure than your equity" if g.max_leverage <= 1 else f"never more total exposure than {g.max_leverage:g}x your equity",
+            sizing_text=(CONVICTION_SIZING.format(min_conv=g.min_conviction, risk_low=g.max_risk_per_trade * 40, risk_high=g.max_risk_per_trade * 100,
+                                                  liq=100 / max(g.max_leverage, 1), lev=g.max_leverage) if g.thesis_mode
+                         else CLASSIC_SIZING.format(target_r=g.target_r, time_stop=g.time_stop_hours / 24)),
+            edge_text=CONVICTION_EDGES if g.thesis_mode else CLASSIC_EDGES.format(
+                std_risk=self.c.standard_risk * 100,
+                auto_text=("Code opens them automatically at standard size the moment they fire, so your job is to manage them: keep them, "
+                           "adjust the stop or target, or close them with a reason. " if self.c.auto_trade_proven else "")),
+            wake_text=(CONVICTION_WAKE.format(min_conv=g.min_conviction) if g.thesis_mode
+                       else CLASSIC_WAKE.format(min_check=f"{self.c.min_check_hours:g}")),
+            rules=rules_text(g, eng.floor),
             playbook=knowledge("playbook.md"),
             stats=f"\n# Backtested setup statistics\n{stats}\n" if stats else "",
             practice=f"\n# Lessons from your practice run on historical charts\n{practice}\n" if practice else "")
@@ -528,10 +625,15 @@ class ClaudeBrain:
     def _think(self, eng, key, candles, now, tier, reason):
         model = tier["model"]
         tools = [DECISION_TOOL]
-        if tier["searches"]:
-            tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": tier["searches"]})
+        research = eng.g.thesis_mode and reason.startswith("Research:")
+        searches = max(tier["searches"], self.c.research_searches) if eng.g.thesis_mode and tier["searches"] else tier["searches"]
+        if searches:  # the same tool list for deep dives and checks, so the cached prompt is shared
+            tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": searches})
         user = self.build_context(eng, candles, now, tier, reason)
-        content, cost, answered_by = self._call(key, model, self.system_prompt(eng), user, tools, cache_ttl=self._cache_ttl(eng, now))
+        content, cost, answered_by = self._call(key, model, self.system_prompt(eng), user, tools, cache_ttl=self._cache_ttl(eng, now),
+                                                effort="high" if research else "medium")
+        if research:
+            eng.store.set("claude_last_research_ts", now)
         c = self.last_cache
         prompt = c["read"] + c["written"] + c["uncached"]
         cache_note = f", {c['read'] / prompt:.0%} of the prompt from cache" if prompt and c["read"] else ""
@@ -552,21 +654,30 @@ class ClaudeBrain:
         for a in d.get("actions") or []:
             coin = (a.get("coin") or eng.primary).upper().strip()
             act, stop = a.get("action"), a.get("stop_price")
+            thesis = None
+            if eng.g.thesis_mode and (a.get("thesis") or a.get("review_hours")):
+                thesis = {k: v for k, v in {"why": a.get("thesis"), "catalyst": a.get("catalyst"), "conviction": a.get("conviction"),
+                                             "review_ts": now + int(float(a["review_hours"]) * 3600) if a.get("review_hours") else None}.items()
+                          if v is not None}
             if act in ("long", "short"):
                 pct = a.get("position_pct") or 0
+                if eng.g.thesis_mode and thesis is not None:
+                    thesis.setdefault("review_ts", now + 72 * 3600)
+                    thesis.setdefault("opened", now)
                 decisions.append(Decision("buy" if act == "long" else "short", why, stop, size_usd=equity * pct / 100,
-                                          coin=coin, setup=a.get("setup"), target=a.get("target_price")))
-                labels.append(f"{act.upper()} {coin} {pct:g}%")
+                                          coin=coin, setup=a.get("setup"), target=a.get("target_price"),
+                                          conviction=a.get("conviction"), thesis=thesis))
+                labels.append(f"{act.upper()} {coin} " + (f"conviction {a.get('conviction')}/10" if eng.g.thesis_mode else f"{pct:g}%"))
             elif act == "close":
                 frac = (a.get("close_pct") or 100) / 100
                 decisions.append(Decision("sell", why, sell_fraction=min(max(frac, 0.0), 1.0), coin=coin))
                 labels.append(f"CLOSE {coin}" + (f" {frac:.0%}" if frac < 1 else ""))
             elif act == "set_stop" and stop:
-                decisions.append(Decision("hold", "Claude moved the stop", stop, coin=coin))
+                decisions.append(Decision("hold", "Claude moved the stop", stop, coin=coin, thesis=thesis))
                 labels.append(f"STOP {coin} {px(stop)}")
             elif act == "set_target":
                 tgt = a.get("target_price")
-                decisions.append(Decision("target", "Claude set the take-profit", coin=coin, target=tgt))
+                decisions.append(Decision("target", "Claude set the take-profit", coin=coin, target=tgt, thesis=thesis))
                 labels.append(f"TARGET {coin} {px(tgt) if tgt else 'none'}")
         summary = ", ".join(labels) or "HOLD"
         called = learning.add_calls(eng.store, d.get("calls") or [], eng.prices, now)
@@ -583,6 +694,14 @@ class ClaudeBrain:
         st, s = eng.store, self.s
         equity = eng.equity()
         lines = [f"## Why you were woken\n{reason}\n", f"Time: {fmt_time(now)}\n"]
+        if eng.g.thesis_mode:
+            lines.append("## What this is\n" + (
+                "A DEEP DIVE. Take your time: study the scanner, trending coins, funding, open interest, the research and the news "
+                "(search properly), and find the one to three best ideas you can. Write each as a thesis with an honest conviction score. "
+                f"Bet only at conviction {eng.g.min_conviction} or above; everything else is a shadow call. Also re-check every open bet's thesis.\n"
+                if reason.startswith("Research:") else
+                "A QUICK CHECK on your open bets. For each: is the thesis still intact? Hold, adjust, or close with a reason. "
+                "Don't open new bets here unless something exceptional appears; that's what deep dives are for.\n"))
 
         burn = eng.daily_burn()
         runway = (equity - eng.floor) / burn if burn > 0 else float("inf")
@@ -603,6 +722,11 @@ class ClaudeBrain:
             unit = p.get("risk_unit")
             r_now = f" ({(price - entry) / unit * (1 if p['qty'] > 0 else -1):+.1f}R)" if unit and price else ""
             plan = []
+            th = p.get("thesis") or {}
+            if th:
+                plan.append(f"conviction {th.get('conviction', '?')}/10")
+                if th.get("review_ts"):
+                    plan.append(f"thesis review {'due now' if th['review_ts'] <= now else 'in ' + format((th['review_ts'] - now) / 3600, '.0f') + 'h'}")
             if p.get("target"):
                 plan.append(f"target {px(p['target'])}")
             if p.get("half_taken"):
@@ -615,6 +739,8 @@ class ClaudeBrain:
             lines.append(f"- {side} {coin}: {abs(p['qty']):.6g} ({abs(p['qty']) * (price or 0):.2f} USDC), entry {px(entry)}, now {px(price or 0)}{r_now}, "
                          f"unrealised {unreal:+.2f}, stop {px(p['stop']) if p.get('stop') else 'none'}, setup {p.get('setup') or '?'}"
                          + (f", {', '.join(plan)}" if plan else "") + ".")
+            if th.get("why"):
+                lines.append(f"  Thesis: {th['why']}" + (f" Catalyst: {th['catalyst']}" if th.get("catalyst") else ""))
         funding = -st.ledger_total("funding")
         if funding:
             lines.append(f"- Funding {'paid' if funding >= 0 else 'received'} so far: {abs(funding):.3f} USDC.")

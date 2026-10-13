@@ -47,7 +47,7 @@ Tag every trade with the setup it uses, so the stats can learn what works.
 
 ## 5. Risk and position sizing
 
-- Size from the stop, not from conviction alone: decide how much of equity you're willing to lose if the stop is hit (at most 2% per trade, and at most 10% across every open trade together, both enforced in code), then position size = risk amount / stop distance.
+- Size from the stop, not from conviction alone: decide how much of equity you're willing to lose if the stop is hit (within the per-trade and total limits in your rules, enforced in code), then position size = risk amount / stop distance.
 - Correlated positions are one bet. Long BTC, ETH and SOL together is roughly one big long crypto position. Spread risk across genuinely different ideas, or size each smaller.
 - Cut losers at the stop, every time. Moving a stop further away to avoid being wrong is the most common way traders die.
 - Let winners run: after a trade moves 1R in your favour, move the stop to breakeven or better. Take partial profits at 2R and trail the rest. The bot does this automatically for every trade; step in only when you have a reason to set a different target or stop.
