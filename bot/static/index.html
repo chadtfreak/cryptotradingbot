@@ -189,6 +189,10 @@
   <section class="card" data-page="learning" data-claude="1" style="margin-bottom:14px"><h2>Market scanner</h2>
     <div class="sub" style="margin-bottom:8px">The most interesting coins trading over <span id="minvol">$20M</span> a day. &#9650; broke above its 20-day high, &#9660; below its low. Funding is what longs pay shorts, as a yearly rate. Setup is any backtested setup firing now; ★ marks a proven edge in today's conditions, with its expected result per trade.</div>
     <div class="tablewrap" id="scanner"></div></section>
+  <section class="card" id="trending-card" data-page="learning" data-claude="1" style="margin-bottom:14px"><h2>Trending coins</h2>
+    <div class="sub" style="margin-bottom:8px">The coins people are searching for most on CoinGecko. When one that trades on Hyperliquid starts trending while its price is still quiet, the bot follows it for 3 days to test whether attention leads price. Tradable means it's on Hyperliquid with enough volume for Claude to trade.</div>
+    <div class="sub" id="attention-stats" style="margin-bottom:8px"></div>
+    <div class="tablewrap" id="trending"></div></section>
   <section class="split" data-page="learning" data-claude="1">
     <div class="card" id="lessons-card">
       <h2>Lessons learned</h2>
@@ -434,7 +438,22 @@ function renderBrain(b) {
   renderPractice(b);
   renderScorecard(b.scorecard);
   renderGolive(b.golive);
+  renderTrending(b.trending, b.attention);
   renderReports(b.reports || []);
+}
+
+function renderTrending(rows, a) {
+  $("trending-card").classList.toggle("hidden", rows == null);
+  if (rows == null) return;
+  $("attention-stats").textContent = a && a.n
+    ? `So far: ${a.n} quiet coins followed for 3 days averaged ${a.avg_72h > 0 ? "+" : ""}${a.avg_72h.toFixed(1)}% and rose in ${Math.round(a.up_72h)}% of cases. ${a.open} still being followed.`
+    : `No results yet${a && a.open ? `: ${a.open} coin${a.open === 1 ? "" : "s"} being followed` : ""}.`;
+  if (!rows.length) { $("trending").innerHTML = `<div class="empty">Checks hourly.</div>`; return; }
+  $("trending").innerHTML = `<table class="compact"><thead><tr><th>#</th><th>Coin</th><th>24h</th><th>Tradable</th></tr></thead><tbody>${
+    rows.map((r) => `<tr><td>${r.rank}</td><td><strong>${esc(r.symbol)}</strong>${r.new ? ` <span class="good">new</span>` : ""}<br><span class="sub">${esc(r.name)}</span></td>
+      <td class="${r.change_24h > 0 ? "good" : r.change_24h < 0 ? "bad" : ""}">${r.change_24h == null ? "-" : pct(r.change_24h)}</td>
+      <td style="white-space:normal">${r.coin ? (r.liquid ? `<span class="good">yes</span>` : `<span class="sub">low volume</span>`) : `<span class="sub">no</span>`}</td></tr>`).join("")
+  }</tbody></table>`;
 }
 
 function renderGolive(g) {

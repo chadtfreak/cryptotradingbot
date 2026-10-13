@@ -87,4 +87,5 @@ auto_trade_proven = true         # proven setups are opened by code at standard 
 standard_risk = 0.01             # a standard-size trade risks 1% of equity at its stop
 maker_entries = true             # enter with a limit order first: 0.015% fees instead of 0.045%
 maker_wait_seconds = 20          # then buy or sell whatever's left at the market price
+trending_feed = true             # CoinGecko trending coins: shown to Claude, and early attention is followed to see if it leads price
 macro_feeds = true               # US economic calendar (wakes Claude around big releases) and BTC dominance, from free feeds

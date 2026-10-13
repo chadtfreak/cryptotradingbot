@@ -21,7 +21,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import edge, golive, learning, macro, report, research, scanner
+from . import attention, edge, golive, learning, macro, report, research, scanner
 from .career import Career, month_key
 from .config import Settings
 from .indicators import atr, ema, rsi
@@ -230,7 +230,7 @@ class ClaudeBrain:
         self._client_key = None
         self._use_fallbacks = True
         self._scan: tuple[float, list[dict]] = (0.0, [])
-        self.macro = macro.Macro(clock=clock) if self.c.macro_feeds else None
+        self.macro = macro.Macro(clock=clock) if self.c.macro_feeds or self.c.trending_feed else None
 
     # Credentials
     def api_key(self, eng) -> str | None:
@@ -423,6 +423,7 @@ class ClaudeBrain:
         for r in learning.grade_calls(eng.store, eng.prices, now):
             eng.store.log(f"Shadow call marked: {r['coin']} {'long' if r['dir'] > 0 else 'short'} ({r['setup']}) from {px(r['entry'])} "
                           f"hit its {r['exit'] if r['exit'] != 'time' else 'time limit'} at {px(r['exit_price'])}, {r['r']:+.2f}R.", ts=now)
+        self._attention(eng, now)
         auto = self._edges(eng, now)
         if auto:
             return auto
@@ -665,6 +666,10 @@ class ClaudeBrain:
             if news:
                 lines.append("## Scheduled US economic news (big moves and spreads often come right around these)")
                 lines.append(news + "\n")
+        if self.c.trending_feed:
+            trend = attention.context(st)
+            if trend:
+                lines.append(trend)
         evidence = self._research_block(eng, feats) if feats else ""
         if evidence:
             lines.append(evidence)
@@ -728,6 +733,22 @@ class ClaudeBrain:
             except Exception:
                 self._regime_cells = {}
         return self._regime_cells
+
+    def _attention(self, eng, now: int) -> None:
+        """Hourly: reads CoinGecko's trending list; every tick: follows coins that started trending while quiet."""
+        if not self.c.trending_feed or self.macro is None:
+            return
+        st = eng.store
+        try:
+            checked = st.get("trending_checked")
+            if checked is None or now - checked >= attention.CHECK_EVERY:
+                liquid = set(eng.market.liquid(eng.g.min_volume_usd)) if eng.g.min_volume_usd else {eng.primary}
+                attention.refresh(st, self.macro, eng.market.universe(), liquid, now)
+            for r in attention.settle(st, eng.prices, now):
+                st.log(f"Attention check: {r['coin']} started trending at {px(r['entry'])} with a quiet price; 3 days later "
+                       f"{r['ret_72h']:+.1f}% (best +{r['max_up']:.1f}%, worst -{r['max_down']:.1f}%).", ts=now)
+        except Exception as exc:
+            st.log(f"Couldn't read the trending coins ({type(exc).__name__}).", level="warning", ts=now)
 
     def _edges(self, eng, now: int) -> list:
         """Follows proven setups: marks skipped ones, and opens new ones at standard size if auto-trading is on."""
@@ -988,6 +1009,8 @@ class ClaudeBrain:
             "career": self.career.summary(eng.store, now, eng.bankroll_base),
             "scorecard": learning.stats(eng.store),
             "golive": golive.check(eng, self.rival, now),
+            "trending": eng.store.get("trending_now") or [] if self.c.trending_feed else None,
+            "attention": attention.stats(eng.store) if self.c.trending_feed else None,
             "reports": eng.store.get("weekly_reports") or [],
             "scanner": [{**{k: f[k] for k in ("coin", "price", "ch_24h", "trend", "breakout", "breakdown", "funding_apr", "volume_m")},
                          "setups": [f"{k.replace('_', ' ')} {'long' if d > 0 else 'short'}"

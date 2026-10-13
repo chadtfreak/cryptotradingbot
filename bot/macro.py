@@ -9,6 +9,7 @@ import httpx
 
 CALENDAR_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 GLOBAL_URL = "https://api.coingecko.com/api/v3/global"
+TRENDING_URL = "https://api.coingecko.com/api/v3/search/trending"
 REFRESH = 3600
 RETRY = 900
 
@@ -49,6 +50,19 @@ class Macro:
             out.append({"ts": ts, "title": e.get("title", "?"), "impact": e["impact"],
                         "forecast": e.get("forecast") or "", "previous": e.get("previous") or ""})
         return sorted(out, key=lambda e: e["ts"])
+
+    def trending(self) -> list[dict]:
+        """The coins most searched for on CoinGecko right now, most searched first."""
+        rows = (self._get("trending", TRENDING_URL) or {}).get("coins") or []
+        out = []
+        for k, r in enumerate(rows):
+            item = r.get("item") or {}
+            if not item.get("symbol"):
+                continue
+            change = ((item.get("data") or {}).get("price_change_percentage_24h") or {}).get("usd")
+            out.append({"symbol": str(item["symbol"]).upper(), "name": item.get("name", ""), "rank": k + 1,
+                        "market_cap_rank": item.get("market_cap_rank"), "change_24h": change})
+        return out
 
     def btc_dominance(self) -> tuple[float, float] | None:
         """(BTC's share of the whole crypto market in %, total market cap change over 24h in %)."""

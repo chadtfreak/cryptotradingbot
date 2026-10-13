@@ -25,11 +25,10 @@ support: https://github.com/chadtfreak/cryptotradingbot/issues
 gallery:
   - https://raw.githubusercontent.com/chadtfreak/cryptotradingbot/HEAD/chad-survival-bot/gallery-1.png
 releaseNotes: >-
-  Prompt caching. The part of Claude's prompt that never changes (its
-  instructions, playbook, research and tools, about 5,600 tokens) is cached, so
-  checks close together read it at a twentieth of the price. Practice runs reuse
-  one cached prompt across all their calls. The activity log shows how much of
-  each check came from the cache.
+  Trending coins. Claude now sees the coins people are searching for most on
+  CoinGecko. When one that trades on Hyperliquid starts trending while its price
+  is still quiet, the bot follows it for 3 days to test whether attention leads
+  price. Results are on the Learning page.
 dependencies: []
 path: ""
 defaultUsername: ""

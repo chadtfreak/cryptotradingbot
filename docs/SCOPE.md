@@ -135,6 +135,8 @@ Honest test of the filter: built from pre 2025 history only and run on 2025 to 2
 
 **Prompt caching (version 1.16).** Claude's instructions, playbook, backtested stats and tool definitions (about 5,600 tokens) are identical on every check, so they're cached; only the market update after them changes. A cached read costs a twentieth of the normal input price on Opus 5.5. When Claude checked within the last hour the cache is kept for an hour (writing it costs 2x, and each read refreshes it for free); otherwise the 5 minute cache (1.25x to write), which still covers web-search continuations within a check. Practice runs cache their shared prompt across all 60 calls. The log shows how much of each prompt came from the cache.
 
+**Trending coins (version 1.17).** An idea borrowed from Chris Camillo's "social arbitrage": spot rising attention before the price reflects it. Every hour the bot reads CoinGecko's list of the most searched-for coins and shows it to Claude. When a coin on Hyperliquid newly appears on the list while its price is still quiet (under 5% in 24 hours), the bot notes the price and follows it for 3 days. The running results (average move after 24 and 72 hours, how often it rose) tell us whether attention really leads price in crypto before anyone trades on it. It's an input and a measurement, not a trading rule.
+
 **The plan from here:** freeze the rules for 4 to 6 weeks (or 50 to 100 closed trades), fix only bugs, then judge with the scorecard, weekly reports and checklist, and change one thing at a time.
 
 ## Stages

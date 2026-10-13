@@ -86,6 +86,7 @@ class ClaudeSettings:
     allow_mainnet: bool = False  # real money stays locked until the testnet run has proved itself
     learning_phase_budget_usd: float = 0.0  # owner-funded thinking for a learning phase (0 = none)
     learning_phase_days: int = 30
+    trending_feed: bool = False  # CoinGecko's most searched-for coins, and whether attention leads price
     macro_feeds: bool = False  # US economic calendar and BTC dominance from free public feeds
     auto_trade_proven: bool = False  # code opens proven setups by itself at standard size, without waking Claude
     standard_risk: float = 0.01  # share of equity a standard-size proven trade risks at its stop
